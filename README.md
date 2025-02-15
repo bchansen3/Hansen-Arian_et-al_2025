@@ -8,6 +8,5 @@
 Brad Hansen and Christopher Arian contributed equally to this report.
 Edward Kelly is the corresponding author for this report.
 
-See bioRxiv version here: link....
 
 Abstract:
