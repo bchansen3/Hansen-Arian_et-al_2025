@@ -1,0 +1,46 @@
+---
+title: "SAVER imputation"
+author: "Chris Arian"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tibble, tidyr, stringr,readxl, ggplot2,ggsci, ggthemes, NormExpression, SoupX, scuttle, Seurat, scran, SeuratDisk, devtools, ggridges, patchwork, SAVER)
+
+packageVersion("SAVER")
+
+
+```
+
+
+The workflow in this document is to use SAVER to impute scRNA-seq data from our selected datasets. SAVER has a good write-up on how to use here: https://cran.r-project.org/web/packages/SAVER/vignettes/saver-tutorial.html
+
+```{r Paper 1 SAVER}
+df1 <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/chris_df.rds")
+
+#need to have data as matrix with genes along rows and cells along columns
+df1_matrix <- as.matrix(h_infant_124@assays$cpm$data)
+
+#running SAVER - note, need to specify that this dataset is already normalized by setting size.factor = 1
+df1_saver <- saver(df1_matrix, size.factor = 1)
+
+saveRDS(df1_saver, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/Paper1_SAVERoutput.rds")
+
+```
+
+
+
+

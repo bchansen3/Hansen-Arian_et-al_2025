@@ -1,0 +1,346 @@
+---
+title: "Testis_Deconv_mergethemerges"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+Load the merged files
+
+```{r load DWLS objects}
+
+files <- list.files("~/OneDrive - UW/data for deconv/Signature matrices impute+no impute (D)/Testis/DWLS_outputs", pattern = "*.rds", full.names = TRUE)
+
+```
+
+```{r load objects}
+
+adult_h<- readRDS(files[1])
+mn2 <- readRDS(files[2])
+mn7DIFF <- readRDS(files[3])
+mn7SL <- readRDS(files[4])
+n120 <- readRDS(files[5])
+n124 <- readRDS(files[6])
+
+
+
+
+```
+
+Add in the cibersort results
+
+```{r cibersort loading, eval=FALSE, include=FALSE}
+
+OLD OLD OLD just keeping for reference
+
+
+fp <- ("~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/Cibersort results/")
+
+adult_h_cb_no <- read_csv(paste0(fp, "h_a_112_noimp.csv")) %>% mutate(imp = "none")%>% mutate(method = "CIBERSORTx") %>% mutate(pb = c(.1,.25,.5,.75,.9)) %>% select(-c(Mixture, `P-value`, Correlation, RMSE)) %>% mutate(title ='AdultHuman')
+
+adult_h_cb_saver <- read_csv(paste0(fp, "h_a_112_SAVER.csv")) %>% mutate(imp = "saver")%>% mutate(method = "CIBERSORTx") %>% mutate(pb = c(.1,.25,.5,.75,.9))%>% select(-c(Mixture, `P-value`, Correlation, RMSE)) %>% mutate(title ='AdultHuman')
+
+adult_h_cb_alra <- read_csv(paste0(fp, "h_a_112_ALRA.csv")) %>% mutate(imp = "alra")%>% mutate(method = "CIBERSORTx") %>% mutate(pb = c(.1,.25,.5,.75,.9))%>%  select(-c(Mixture, `P-value`, Correlation, RMSE)) %>% mutate(title ='AdultHuman')
+
+adult_h_cb_magic <- read_csv(paste0(fp, "h_a_112_MAGIC.csv")) %>% mutate( imp = "magic")%>% mutate(method = "CIBERSORTx") %>% mutate(pb = c(.1,.25,.5,.75,.9))%>% select(-c(Mixture, `P-value`, Correlation, RMSE)) %>% mutate(title ='AdultHuman')
+
+
+adult_h <- rbind(adult_h, adult_h_cb_no,adult_h_cb_saver,adult_h_cb_alra,adult_h_cb_magic)
+
+```
+
+```{r load all data, include=FALSE}
+
+fp <- ("~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/Cibersort results/bh_update")
+files <- list.files(path = fp, pattern = "*.csv", full.names = TRUE)
+
+for (file in files) {
+  
+  basename_file <- basename(file)
+  method_value <- str_extract(basename_file, "(?<=_)[^_]+(?=\\.csv$)")
+  basename_minus_method <- str_remove(basename_file, paste0("_", method_value, "\\.csv$"))
+
+  
+  
+  # Read the CSV file
+  df <- read_csv(file) %>% 
+    mutate(imp = method_value) %>%
+    mutate(method = "CIBERSORTx") %>% 
+    mutate(pb = c(.1, .25, .5, .75, .9)) %>% 
+    select(-c(Mixture, `P-value`, Correlation, RMSE)) %>% 
+    mutate(title = basename_minus_method)
+  
+  df <- df %>% mutate(imp = recode(imp, "svr" = "saver", "noimp" = "none"))
+  
+  colnames(df) <- gsub("[-/]", "", colnames(df))
+  
+  
+
+  
+  # Get the basename of the file (without path and extension)
+  basename_file <- tools::file_path_sans_ext(basename(file))
+  
+  # Dynamically assign the data frame to a variable with the name of the input file
+  assign(basename_file, df)
+}
+
+
+```
+
+
+
+
+
+
+```{r combine files}
+
+adult_h <- rbind(adult_h,ha112_alra, ha112_magic, ha112_noimp, ha112_svr)
+ 
+infant120 <- rbind(n120, hi120_alra,hi120_magic,hi120_noimp,hi120_svr) 
+
+infant124 <- rbind(n124, hi124_alra,hi124_magic,hi124_noimp,hi124_svr) 
+
+mouse2 <- rbind(mn2, m_d2_SL_magic, md2_alra, md2_noimp, md2_svr)
+
+mouse7SL <- rbind(mn7SL, m_d7_SL_magic, md7_SL_alra, md7_sl_noimp, md7_SL_svr) 
+
+mouse7DF <- rbind(mn7DIFF, md7_diff_noimp, md7_diff_svr, m_d7_Diff_alra, md7_Diff_magic)
+
+```
+
+plotting
+
+```{r plotting112}
+
+df_in <- infant124
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(size=3, shape='diamond', alpha = 0.9) + 
+  geom_line(size=1.2, alpha= 0.6) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli") +
+  xlab("Actual Sertoli") +
+  ggtitle("Infant-124") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 16, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +  
+  facet_wrap(~method, nrow=1) 
+
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/infant124_sames.png", width = 12, height=4)
+
+```
+
+
+Neonate 120
+```{r plotting120}
+
+df_in <- infant120
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(shape='diamond', size=3) + 
+  geom_line(size=1) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli %") +
+  xlab("Actual Sertoli %") +
+  ggtitle("Neonatal Human Testis (GSE120...)") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 14, base_family = "Myriad Pro") +
+  theme(legend.position="bottom") +
+  facet_wrap(~method, nrow=1) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/neonate_120_h_DWLS.png", width = 12, height=4)
+
+
+# ALRA is always BLUE
+# MAGIC is Orange
+# None is Green
+# Saver is Red
+```
+
+
+Neonate 124
+```{r plotting124}
+
+df_in <- infant124
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(shape='diamond', size=3) + 
+  geom_line(size=1) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli %") +
+  xlab("Actual Sertoli %") +
+  ggtitle("Neonatal Human Testis (GSE124...)") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 14, base_family = "Myriad Pro") +
+  theme(legend.position="bottom") +
+  facet_wrap(~method, nrow=1) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/neonate_124_h_DWLS.png", width = 12, height=4)
+
+
+# ALRA is always BLUE
+# MAGIC is Orange
+# None is Green
+# Saver is Red
+```
+
+mouse d2
+```{r plotting d2}
+
+df_in <- mouse2
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(shape='diamond', size=3) + 
+  geom_line(size=1) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli %") +
+  xlab("Actual Sertoli %") +
+  ggtitle("Neonatal Mouse Testis (GSE...)") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 14, base_family = "Myriad Pro") +
+  theme(legend.position="bottom") +
+  facet_wrap(~method, nrow=1) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/mouse_d2_DWLS.png", width = 12, height=4)
+
+
+# ALRA is always BLUE
+# MAGIC is Orange
+# None is Green
+# Saver is Red
+```
+mouse d7
+```{r plotting d2}
+
+df_in <- mouse7SL
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(shape='diamond', size=3) + 
+  geom_line(size=1) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli %") +
+  xlab("Actual Sertoli %") +
+  ggtitle("PND 7 Mouse Testis (SAME LABLES)  (GSE...)") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 14, base_family = "Myriad Pro") +
+  theme(legend.position="bottom") +
+  facet_wrap(~method, nrow=1) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/mouse_d7_SL_DWLS.png", width = 12, height=4)
+
+
+# ALRA is always BLUE
+# MAGIC is Orange
+# None is Green
+# Saver is Red
+```
+mouse d7
+```{r plotting d7df}
+
+df_in <- mouse7DF
+df <- df_in %>% rename ('Imputation Method' = imp)
+
+trues <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=pb, y=Sertoli, color=`Imputation Method`)) +
+  geom_point(shape='diamond', size=3) + 
+  geom_line(size=1) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=trues, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=trues, limits=c(0, 1)) +  
+  ylab("Predicted Sertoli %") +
+  xlab("Actual Sertoli %") +
+  ggtitle("PND 7 Mouse Testis (Diff LABLES)  (GSE...)") +
+  scale_color_d3(labels=c("ALRA", "MAGIC", "None", "SAVER")) +  
+  theme_bw(base_size = 14, base_family = "Myriad Pro") +
+  theme(legend.position="bottom") +
+  facet_wrap(~method, nrow=1) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/mouse_d7_DiffL_DWLS.png", width = 12, height=4)
+
+
+# ALRA is always BLUE
+# MAGIC is Orange
+# None is Green
+# Saver is Red
+```
+```{r mape calcs}
+
+ah_mape <- adult_h %>% select(Leydig, pb, method, imp) %>% rename(pred = Leydig) %>% mutate(ref = 'adultH')
+ih120_mape <- infant120 %>% select(Sertoli, pb, method, imp) %>% rename(pred = Sertoli) %>% mutate(ref = 'n120')
+ih124_mape <- infant124 %>% select(Sertoli, pb, method, imp) %>% rename(pred = Sertoli) %>% mutate(ref = 'n124')
+md2_mape <- mouse2 %>% select(Sertoli, pb, method, imp) %>% rename(pred = Sertoli) %>% mutate(ref = 'md2')
+md7df_mape <- mouse7DF %>% select(Sertoli, pb, method, imp) %>% rename(pred = Sertoli) %>% mutate(ref = 'md7')
+
+mape_all <- rbind(ah_mape,ih120_mape,ih124_mape,md2_mape,md7df_mape)
+
+
+mapes <-  mape_all %>%  
+            group_by(method, imp) %>%
+            summarise(mape_value = mape(pb, pred)) %>%
+            mutate(percent = mape_value*100) %>%
+            ungroup()
+
+
+mape_minmax <-  mape_all %>% 
+ group_by(method, imp, ref) %>%
+  summarise(
+    mape_value = mape(pb, pred)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(mape_value)*100,
+        max=max(mape_value)*100)
+
+```
+
+

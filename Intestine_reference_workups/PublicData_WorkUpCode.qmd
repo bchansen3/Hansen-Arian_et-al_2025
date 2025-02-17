@@ -1,0 +1,381 @@
+---
+title: "Rootin' Tootin' Deconvolutin'"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+author:
+  - name: Brad Hansen
+    affiliation: "The University of Washington"
+  - name: Anish Mahadeo
+    affiliation: "The University of Washington"
+  - name: Chris Arian
+    affiliation: "The University of Washington"
+    
+abstract: > 
+  Assessment of the value of bulk RNA-seq deconvolution to estimate the proportion of cell types in MPS systems.
+---
+
+## Introduction
+
+link for linear regression methods of RNA-seq deconvolution https://genomebiology.biomedcentral.com/articles/10.1186/s13059-017-1256-5
+
+# MPS/organoid systems in toxicology/drug discovery
+
+kidney
+intestine
+testis
+
+# Single-cell sequencing
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7695353/
+Second, if scRNA-seq data are used to build a signature matrix, it is straightforward to characterize its performance using synthetic tissues created from single-cell transcriptomes. To ensure an unbiased assessment, these source scRNA-seq transcriptomes used for the creation of a synthetic tissue should be held out from the creation of the signature matrix. Moreover, to avoid violating linearity assumptions, each single-cell transcriptome should be represented in nonlog linear space prior to creating synthetic mixtures. By allowing for fine-grained control over the composition of each mixture, this strategy allows one to systematically evaluate both proportion estimation and cellular detection limits without the cost and time associated with profiling new samples with associated ground-truth expectations of compositional representation.
+
+## Methods
+
+The following tissues will be used in this manuscript: duodenum (intestine), proximal tubule (kidney), and testis.
+
+# TPM vs. CPM
+https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02290-6#Sec2
+more important to just be in same method
+
+## Install Packages
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tibble, tidyr, stringr,readxl, ggplot2,ggsci, ggthemes, NormExpression, SoupX, scuttle, Seurat, scran, SeuratDisk, devtools, harmony, biomaRt, BiocManager, plyr)
+
+
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+remotes::install_github("mojaveazure/seurat-disk")
+
+#For presto, makes the marker identification significantly faster
+devtools::install_github('immunogenomics/presto')
+
+```
+
+
+
+Paper 1 - Cells of the human intestinal tract mapped across space and time
+```{r loading in data}
+#loading in scRNA seq data from the gut cell axis
+#https://www.gutcellatlas.org/
+#Data is from the epithelium lineage, raw H5AD data
+SeuratDisk::Convert("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/epi_raw_counts02_v2.h5ad", 
+        dest = "h5seurat", overwrite = TRUE)
+
+
+df1 <- SeuratDisk::LoadH5Seurat("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/epi_raw_counts02_v2.h5seurat")
+
+#Want only small intestine samples from adults
+df <- df1[, df1$Age_group == "Adult" & df1$Region == "SmallInt"]
+
+#calculating number of cells express each gene - need to filter out genes that are expressed in 3 or less cells
+counts <- GetAssayData(df, layer =  "counts")
+cell_counts <- rowSums(counts > 0)
+keeper_genes <- names(cell_counts[cell_counts >= 3])
+
+df <- subset(df, features = keeper_genes)
+rm(df1)
+
+#filtering per paper
+#cells with more than 500 genes are kept
+#Threshold of <50% mitochondrial reads
+#removing doublets per cutoff in paper (25%)
+df <- subset(df, subset = doublet_scores < 0.25 & n_genes > 500 & pct_counts_mt < 50)
+
+#normalizing
+df <- NormalizeData(df, normalization.method = "LogNormalize", scale.factor = 1e6)
+
+#variable features
+df <- FindVariableFeatures(df, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(df), 10)
+p1 <- VariableFeaturePlot(df)
+p2 <- LabelPoints(plot = p1, points = top10, repel = TRUE)
+p1 + p2
+
+#scaling - regressing out cell cycle score, percent mito, and nUMI per paper
+df <- ScaleData(object = df, vars.to.regress = c("phase", "pct_counts_mt", "nCount_RNA"))
+
+#save progress
+saveRDS(df, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/chris_df.rds")
+
+#PCA
+df <- RunPCA(df, features = VariableFeatures(object = df))
+
+#Run harmony to elminate batch effects
+df <- df %>%
+  RunHarmony("batch", plot_convergence = T)
+harmony_embeddings <- Embeddings(df, "harmony")
+harmony_embeddings[1:5, 1:5]
+
+#clustering
+df <- df %>%
+  RunUMAP(reduction = "harmony", dims = 1:20) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:20) %>%
+  FindClusters(resolution = 0.25) %>%
+  identity()
+
+
+#data vis
+DimPlot(df, reduction = "umap")
+
+#save progress
+saveRDS(df, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/chris_df.rds")
+
+#markers
+df.markers <- FindAllMarkers(df, only.pos = T)
+
+
+#filtering markers
+#More strict criteria
+pct_markers_df_1 <- df.markers %>%
+  group_by(cluster) %>%
+  filter(pct.1 > 0.60) %>% 
+  filter(pct.2 < 0.3)
+
+write.csv(pct_markers_df_1, "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/paper1_markers_1.csv")
+
+#Less strict criteria
+pct_markers_df_2 <- df.markers %>%
+  group_by(cluster) %>%
+  filter(pct.1 > 0.6)
+
+write.csv(pct_markers_df_2, "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/paper1_markers_2.csv")
+```
+
+
+
+```{r marker visualization}
+#all markers listed per paper
+
+#stem cells
+VlnPlot(df, features = c("LGR5", "ASCL2", "SMOC2", "RGMB", "OLFM4"))
+
+#Paneth cells
+VlnPlot(df, features = c("DEFA5", "DEFA6", "REG3A"))
+
+#TA cells
+VlnPlot(df, features = c("MKI67", "TOP2A", "PCNA"))
+
+#Goblet cells
+VlnPlot(df, features = c("CLCA1", "SPDEF", "FCGBP", "ZG16", "MUC2"))
+
+#BEST4 cells
+VlnPlot(df, features = c("BEST4", "OTOP2", "CA7"))
+
+#enterocytes
+VlnPlot(df, features = c("RBP2", "ANPEP", "FABP2", "CYP3A4"))
+
+#EECs
+VlnPlot(df, features = c("CHGA", "CHGB", "NEUROD1"))
+
+#microfold
+VlnPlot(df, features = c("SPIB", "CCL20", "GP2"))
+
+#Tuft cells
+VlnPlot(df, features = c("POU2F3", "LRMP", "TRPM5"))
+
+```
+
+
+```{r updated UMAP IDing clusters Saving dataset}
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+
+#Renaming cluster IDs
+cluster.ids <- c("Enterocyte", "Enterocyte", "Enterocyte", "Goblet cell", "Enterocyte", "Goblet cell", "BEST4", "Enterocyte", "Enterocyte", "Enterocyte", "Paneth cell", "Tuft cell", "Proliferative cell", "EEC")
+names(cluster.ids) <- levels(df)
+df <- RenameIdents(df, cluster.ids)
+
+dfumap <- DimPlot(df, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
+    theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = guide_legend(override.aes = list(size = 10)))
+
+dfumap
+
+
+#save progress
+saveRDS(df, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/chris_df.rds")
+```
+
+
+
+Paper 2 - proximal to distal survey
+```{r loading in and prepping data}
+
+#loading in scRNA seq data from the proximal to distal survey paper
+#GSE185224
+#https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE185224
+
+
+donor1 <- Read10X_h5("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/GSE185224_Donor1_filtered_feature_bc_matrix.h5")
+donor1 <- donor1$`Gene Expression`
+
+donor2 <- Read10X_h5("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/GSE185224_Donor2_filtered_feature_bc_matrix.h5")
+donor2 <- donor2$`Gene Expression`
+
+donor3 <- Read10X_h5("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/GSE185224_Donor3_filtered_feature_bc_matrix.h5")
+donor3 <- donor3$`Gene Expression`
+
+
+#making these into Seurat objects
+donor1 <- CreateSeuratObject(counts = donor1,
+                             project = "donor 1")
+donor2 <- CreateSeuratObject(counts = donor2,
+                             project = "donor 2")
+donor3 <- CreateSeuratObject(counts = donor3,
+                             project = "donor 3")
+
+
+#creating a percent mitochondrial metadata section for filtering
+donor1$percent.MT <- PercentageFeatureSet(donor1, pattern = "^MT-")
+donor2$percent.MT <- PercentageFeatureSet(donor2, pattern = "^MT-")
+donor3$percent.MT <- PercentageFeatureSet(donor3, pattern = "^MT-")
+
+
+
+#filtering per paper:
+#Donor 1 = min genes >500, %MT < 75%, min counts >3000, max counts <50000
+#Donor 2 = min genes >800, %MT < 50%, min counts >1000, max counts <30000
+#Donor 3 = min genes >500, %MT < 75%, min counts >3000, max counts <50000
+donor1 <- subset(donor1, nFeature_RNA > 500 & percent.MT <75 & nCount_RNA > 3000 & nCount_RNA < 50000)
+donor2 <- subset(donor2, nFeature_RNA > 800 & percent.MT <50 & nCount_RNA > 1000 & nCount_RNA < 30000)
+donor3 <- subset(donor3, nFeature_RNA > 500 & percent.MT <75 & nCount_RNA > 3000 & nCount_RNA < 50000)
+
+#merge
+df2 <- merge(x = donor1, y = list(donor2, donor3))
+df2[["RNA"]] <- JoinLayers(df2[["RNA"]]) #need to collapse the layers into one
+
+#memory saver
+rm(donor1, donor2, donor3)
+
+#normalizing
+df2 <- NormalizeData(df2,
+                        normalization.method = "LogNormalize",
+                        scale.factor = 1e6)
+
+
+
+#Cell cycle scoring
+df2 <- CellCycleScoring(df2, s.features = cc.genes.updated.2019$s.genes, g2m.features = cc.genes.updated.2019$g2m.genes, set.ident = TRUE)
+
+```
+
+
+```{r scaling and clustering}
+#scaling and regressing out variables per paper
+#vars to regress = cell cycle genes, gene expression count, and % mito genes
+df2 <- ScaleData(df2, vars.to.regress = c("nFeature_RNA", "percent.MT", "S.Score", "G2M.Score"))
+df2 <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/chris_df2.rds")
+
+test1 <- GetAssayData(object = df2, assay = "RNA", layer = "scale.data")
+
+#variable feature identification
+df2 <- FindVariableFeatures(df2, selection.method = "vst", nfeatures = 2000)
+top10_df2<- head(VariableFeatures(df2), 10)
+p1 <- VariableFeaturePlot(df2)
+p2 <- LabelPoints(plot = p1, points = top10_df2, repel = TRUE)
+p1 + p2
+
+#PCA
+df2 <- RunPCA(df2, features = VariableFeatures(object = df2))
+
+#Run harmony to elminate batch effects
+df2 <- df2 %>%
+  RunHarmony("orig.ident", plot_convergence = T)
+harmony_embeddings <- Embeddings(df2, "harmony")
+harmony_embeddings[1:5, 1:5]
+
+#clustering
+df2 <- df2 %>%
+  RunUMAP(reduction = "harmony", dims = 1:20) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:20) %>%
+  FindClusters(resolution = 0.25) %>%
+  identity()
+
+
+#data vis
+DimPlot(df2, reduction = "umap")
+
+
+#save progress
+saveRDS(df2, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/chris_df2.rds")
+
+```
+
+
+```{r markers}
+#all markers
+#markers
+df2.markers <- FindAllMarkers(df2, only.pos = T)
+
+
+#filtering markers
+#More strict criteria
+pct_markers_df2_1 <- df2.markers %>%
+  group_by(cluster) %>%
+  filter(pct.1 > 0.60) %>% 
+  filter(pct.2 < 0.3)
+
+write.csv(pct_markers_df2_1, "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/Alldonors_markers_1.csv")
+
+#Less strict criteria
+pct_markers_df2_2 <- df2.markers %>%
+  group_by(cluster) %>%
+  filter(pct.1 > 0.6)
+
+write.csv(pct_markers_df2_2, "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/Alldonors_markers_2.csv")
+
+```
+
+
+
+```{r updated UMAP IDing clusters Saving dataset}
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+
+#Renaming cluster IDs
+cluster.ids <- c("Enterocyte", "Other", "Enterocyte", "Goblet cell", "Tuft cell", "Enterocyte", "Goblet cell", "Proliferative cell", "Paneth cell", "Other", "BEST4", "EEC", "Other")
+names(cluster.ids) <- levels(df2)
+df2 <- RenameIdents(df2, cluster.ids)
+
+df2umap <- DimPlot(df2, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
+    theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = guide_legend(override.aes = list(size = 10)))
+df2umap
+
+ggsave(filename = "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/UMAP_results_allDonors.jpg", height = 7, width = 12, plot = df2umap, dpi = 600)
+
+
+#save progress
+saveRDS(df2, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/chris_df2.rds")
+
+#Dataset is ready for imputation and generation of pseudobulks/reference matrixes
+```
+
+
+
+Paper 3 - Epithelial zonation along the mouse and human small intestine defines five discrete metabolic domains, PMID = 38321203
+
+Data found here: https://cellxgene.cziscience.com/collections/3db5617e-9f12-4eb4-8416-94893a0d7c46
+```{r Load data, update names}
+#It seems like this is the data from one of the two donors (donor 2) - the other donor isn't availble on their website. This should be sufficient for our purposes
+df <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/bb7e3053-378c-46e5-9bad-fb582778e4e3.rds")
+#The data has already been analyzed and cell types are identified - I'll rename cell types to be consistent with the other datasets
+
+Idents(df) <- "cell_type"
+DimPlot(df, label = T)
+
+df <-   RenameIdents(object = df, c("stem cell" = "Proliferative cell", 
+               "M cell of gut" = "Other", 
+               "enteroendocrine cell of small intestine" = "EEC", 
+               "transit amplifying cell of small intestine" = "Proliferative cell", 
+               "tuft cell of small intestine" = "Tuft cell", 
+               "enterocyte of epithelium of small intestine" = "Enterocyte", 
+               "paneth cell of epithelium of small intestine" = "Paneth cell", 
+               "small intestine goblet cell" = "Goblet cell", 
+               "BEST4+ intestinal epithelial cell, human" = "BEST4", 
+               "cell" = "Other"))
+
+saveRDS(df, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/Paper3_df_CA.rds")
+```
+

@@ -1,0 +1,301 @@
+---
+title: "Updates MAGICS for gut supplemental"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+---
+title: "GUT-crosscompare_DWLS-MAGICS"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom,tools, readr, tidyverse, DWLS, stringr, Metrics)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+load and combine the MAGIC PBs
+```{r load noIMP PBs}
+
+dfwd <- ("~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23")
+
+# no Imp
+files <- list.files(path=dfwd,  pattern = "^d", full.names = TRUE, recursive = TRUE)
+
+noimp_PBs <- list()
+
+list_of_files <- lapply(files, function(file) {
+  df <- read.delim(file, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+    name <- file_path_sans_ext(basename(file))
+  names(df) <- name  
+  return(df)
+})
+
+GUTmagic_PB <- Reduce(function(x, y) {
+  merge(x, y, by = "row.names", all = FALSE) %>%
+    column_to_rownames("Row.names")
+}, list_of_files)
+
+GUTmagic_PB <-  GUTmagic_PB %>% rownames_to_column("geneid")
+
+
+write.table(GUTmagic_PB, file = "~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23/GUTmagic_PB.txt", sep = "\t", quote = FALSE, row.names = FALSE,col.names = TRUE)
+
+```
+
+
+Load the signatures matrices
+```{r sigs}
+
+swd <- list.dirs("~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23/magic_dwls_sigs", full.names = TRUE)
+
+magic_matrices <- list()
+
+for (dir in swd) {
+        rds_files <- list.files(dir, pattern = "Sig.rds", full.names = TRUE, recursive = TRUE)
+        for (rds_file in rds_files) {
+        data <- readRDS(rds_file)
+        file_name_part <- basename(dirname(rds_file))
+        new_name <- paste0(file_name_part, "_sig")  
+                magic_matrices[[new_name]] <- data }}
+
+
+```
+
+
+```{r deconv draft cross, include=FALSE}
+
+GUTmagic_PB <- GUTmagic_PB %>% column_to_rownames("geneid")
+
+  DWLS <- data.frame()
+  SVR <- data.frame()
+  OLS <- data.frame()
+
+
+runDWLSall <- function(df_in, sig_matrix_in) {
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  
+  df <- df_in[rows, ]
+  sig_matrix_in <- sig_matrix_in[rows, ]
+  
+  samples <- colnames(df)
+  
+  for (i in samples) {
+    name <- i
+    dataBulk <- as.numeric(df[, i])
+    Signature <- as.matrix(sig_matrix_in)
+    Signature <- 2^Signature - 1  
+    
+    solDWLS <- solveDampenedWLS(Signature, dataBulk)
+    solSVR <- solveSVR(Signature, dataBulk)
+    solOLS <- solveOLS(Signature, dataBulk)
+    
+    DWLS <- rbind(DWLS, solDWLS)
+    SVR <- rbind(SVR, solSVR)
+    OLS <- rbind(OLS, solOLS)
+  }
+  
+  # Ensure correct column names and add method columns before binding results
+  colnames(DWLS) <- c(colnames(Signature))
+  DWLS$method <- 'DWLS'
+
+  colnames(SVR) <- c(colnames(Signature))
+  SVR$method <- 'SVR'
+  
+  colnames(OLS) <- c(colnames(Signature))
+  OLS$method <- 'OLS'
+
+  out <- rbind(DWLS, OLS, SVR)
+  out$ref <- rep(samples, times = 3)
+
+  return(out)
+}
+
+
+gut_magics <- lapply(magic_matrices, runDWLSall, df_in = GUTmagic_PB)
+
+result <- lapply(names(gut_magics), function(name) {
+  df <- gut_magics[[name]]
+  
+  df <- df %>%
+    select(Enterocyte, Proliferativecell, Gobletcell, method, ref) %>% mutate(name = name)  
+  return(df)
+})
+
+all_gut_magics <- bind_rows(result)
+all_gut_magics$imp <- 'MAGIC'
+
+
+all_gut_magics <- all_gut_magics %>%
+  mutate(
+    pb = case_when(
+      grepl("_pCb1$", ref) ~ 0.5,
+      grepl("_pCb2$", ref) ~ 0.1,
+      grepl("_pCb3$", ref) ~ 0.25,
+      grepl("_pCb4$", ref) ~ 0.75,
+      grepl("_pCb5$", ref) ~ 0.9  ),
+    pb_paper = sub("_.*", "", ref),  
+    pb_paper = recode(pb_paper,     
+                      'df1' = 'paper1',
+                      'df2' = 'paper2',
+                     'df3' = 'paper3' ),
+    sig_paper = sub("_.*", "", name),
+    sig_paper = recode(sig_paper,     
+                      'df1' = 'paper1',
+                      'df2' = 'paper2',
+                     'df3' = 'paper3' ))%>%
+  select(-ref)%>%select(-name)
+
+
+```
+
+add in the cibersortx magics
+```{r cb}
+
+cb_df1 <- read_csv('~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23/cibersort_cross/DF1ref_magic.csv')%>% select(Mixture,	Enterocyte,`Proliferative cell`, `Goblet cell`) %>% mutate(sig_paper = 'paper1')
+cb_df2 <- read_csv('~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23/cibersort_cross/DF2ref_magic.csv')%>% select(Mixture,	Enterocyte,`Proliferative cell`, `Goblet cell`) %>% mutate(sig_paper = 'paper2')
+cb_df3 <- read_csv('~/OneDrive - UW/data for deconv/MAGICs_fromBRAIN_12-23/cibersort_cross/DF3ref_magic.csv')%>% select(Mixture,	Enterocyte,`Proliferative cell`, `Goblet cell`) %>% mutate(sig_paper = 'paper3')
+
+
+ciber_magics <- rbind(cb_df1,cb_df2,cb_df3)
+
+
+ciber_magics <- ciber_magics %>%
+  mutate(
+    pb = case_when(
+      grepl("_pCb1$", Mixture) ~ 0.5,
+      grepl("_pCb2$", Mixture) ~ 0.1,
+      grepl("_pCb3$", Mixture) ~ 0.25,
+      grepl("_pCb4$", Mixture) ~ 0.75,
+      grepl("_pCb5$", Mixture) ~ 0.9  ),
+    pb_paper = sub("_.*", "", Mixture),
+    pb_paper = recode(pb_paper,     
+                      'df1' = 'paper1',
+                      'df2' = 'paper2',
+                     'df3' = 'paper3' ))
+
+cross_CBmagics <- ciber_magics %>%
+  filter(pb_paper != sig_paper)%>%
+  mutate(method = 'CIBERSORTx')%>%
+  mutate(imp = 'MAGIC')%>%
+  select(-Mixture)
+
+```
+
+
+
+load other data
+```{r load files}
+
+same_gutmagics <- all_gut_magics %>%
+  filter(pb_paper == sig_paper)
+
+cross_gutmagics <- all_gut_magics %>%
+  filter(pb_paper != sig_paper)
+
+```
+
+
+all_crosses for GUT
+```{r gut cross}
+
+all_gut_cross <- read_csv("~/OneDrive - UW/data for deconv/Deconvolution output (F)/Gut_updated/AllCrossCompareData_suppfig.csv") 
+
+
+gut_cross_meta <- read_csv("~/OneDrive - UW/data for deconv/Deconvolution output (F)/Gut_updated/AllCrossCompareData_suppfig_metaREF.csv") 
+
+## Load in the Meta-reference file for the supplemental figured.
+# It is VERY IMPORTANT that it goes pb + pb_paper + sig_paper
+
+cross_gutmagics$ref_id <- paste0(cross_gutmagics$pb,cross_gutmagics$pb_paper,cross_gutmagics$sig_paper) 
+cross_gutmagics <- left_join(cross_gutmagics,gut_cross_meta, by='ref_id')
+
+
+
+cross_CBmagics$ref_id <- paste0(cross_CBmagics$pb,cross_CBmagics$pb_paper,cross_CBmagics$sig_paper)
+cross_CBmagics <- left_join(cross_CBmagics,gut_cross_meta, by='ref_id')
+colnames(cross_CBmagics) <- gsub(" ", "", colnames(cross_CBmagics))
+
+
+
+all_magic_gutsupp <- rbind(cross_gutmagics, cross_CBmagics)
+
+all_magic_gutsupp <- all_magic_gutsupp %>% 
+  mutate(sig_paper = recode(sig_paper,     
+                       'paper1' = 'Gut Atlas',
+                      'paper2' = 'GSE185',
+                     'paper3' = 'GSE201' ),
+         imp = recode(imp,
+                      'No imputation' = "No Imp." ))%>%
+  mutate(
+    method = factor(method, levels = c( "CIBERSORTx","DWLS",  "SVR","OLS")),
+    imp = factor(imp, levels = c("No Imp.", "ALRA" , "SAVER", "MAGIC" )))
+
+
+```
+
+
+MAPES
+```{r mapes}
+require(Metrics)
+
+sum(is.na(all_magic_gutsupp$pb_prol))  # Check for NA values in pb_prol
+sum(is.na(all_magic_gutsupp$Proliferativecell))  # Check for NA values in Proliferativecell
+
+
+summary(all_magic_gutsupp)
+### Prolif
+
+mape_prol <-  all_magic_gutsupp %>%  
+  group_by(method) %>%
+  summarise(mape_value = mape(pb_prol, Proliferativecell)) %>%
+  mutate(percent = mape_value*100) %>%
+  ungroup()
+
+mape(all_magic_gutsupp$pb_prol,all_magic_gutsupp$Proliferativecell)
+
+mape_minmax_prol <-  all_magic_gutsupp %>% 
+  group_by(method, sig_paper) %>%
+  summarise(
+    mape_value = mape(pb_gob, Proliferativecell)) %>%
+  ungroup()%>%
+  group_by(method) %>%
+  summarise(
+    min=min(mape_value)*100,
+    max=max(mape_value)*100)
+
+
+# Goblet
+
+mape_gob <-  all_magic_gutsupp %>%  
+  group_by(method) %>%
+  summarise(mape_value = mape(pb_gob, Gobletcell)) %>%
+  mutate(percent = mape_value*100) %>%
+  ungroup()
+
+
+mape_minmax_gob <-  all_magic_gutsupp %>% 
+  group_by(method,  sig_paper) %>%
+  summarise(
+    mape_value = mape(pb_gob, Gobletcell)) %>%
+  ungroup()%>%
+  group_by(method) %>%
+  summarise(
+    min=min(mape_value)*100,
+    max=max(mape_value)*100)
+
+
+write.csv(all_magic_gutsupp, "~/Desktop/gupp_supp_forMAPE.csv")
+
+```

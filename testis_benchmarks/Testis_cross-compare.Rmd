@@ -1,0 +1,546 @@
+---
+title: "testis-crosscompare_DWLS"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+load objects
+```{r objects}
+
+human_to_rat <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Human.rds")
+# Keep only the Gene Names
+human_to_rat <- human_to_rat[,c("Human_GRCh38_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(human_to_rat) <- c("human","rat")
+human_to_rat <- human_to_rat %>% distinct()
+
+Rat_to_Mouse <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Mouse.rds")
+# Keep only the Gene Names
+Rat_to_Mouse <- Rat_to_Mouse[,c("Mouse_GRCm39_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(Rat_to_Mouse) <- c("mouse","rat")
+Rat_to_Mouse <- Rat_to_Mouse %>% distinct()
+
+files_out <- "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/combined/"
+
+```
+Load in each methods combined psuedobulk (all magics, all alras, etc.). Then run dWLS deconv on those and remove the same-same comparisons. Only use the D7_diff files
+
+load and combine the noIMP PBs
+```{r load noIMP PBs}
+
+dfwd <- ("~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/")
+
+# no Imp
+noimps <- list.files(paste0(dfwd,"noImp"),  pattern = "*_combined.txt", full.names = TRUE)
+
+noimp_PBs <- list()
+
+for (file in noimps) {
+  
+  df <- read.delim(file)
+  
+    if (startsWith(basename(file), "m_")) {
+    df <- df %>%  distinct(V1, .keep_all = TRUE) %>%  left_join(Rat_to_Mouse %>% distinct(mouse, .keep_all = TRUE), by = c('V1' = 'mouse')) %>%
+  filter(!is.na(rat)) %>% distinct(rat, .keep_all = TRUE) %>% column_to_rownames("rat") %>%select(-V1)%>% rownames_to_column(var = "rowname")  
+    noimp_PBs[[basename(file)]] <- df  
+  } else {
+    df <- left_join(df,human_to_rat, by = c('V1' = 'human')) %>% filter(!is.na(rat)) %>% column_to_rownames("rat") %>% select(-V1) %>% rownames_to_column(var = "rowname")  
+
+    noimp_PBs[[basename(file)]] <- df  
+  }
+}
+
+all_noimp_PBs <- Reduce(function(x, y) inner_join(x, y, by = "rowname"), noimp_PBs) %>% column_to_rownames(var = "rowname")
+
+all_noimp_PBs <- all_noimp_PBs %>% rownames_to_column('gene')
+
+write.table(all_noimp_PBs, file = paste0(files_out, "all_noimp_PBs.txt"), sep = "\t", quote = FALSE, row.names = FALSE,col.names = TRUE)
+```
+
+load and combine the ALRA PBs
+```{r load ALRA PBs}
+
+dfwd <- ("~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/")
+
+# no Imp
+alra <- list.files(paste0(dfwd,"ALRA"),  pattern = "*_combined.txt", full.names = TRUE)
+
+dfs <- list()
+
+for (file in alra) {
+  
+  df <- read.delim(file)
+  
+    if (startsWith(basename(file), "m_")) {
+    df <- df %>%  distinct(V1, .keep_all = TRUE) %>%  left_join(Rat_to_Mouse %>% distinct(mouse, .keep_all = TRUE), by = c('V1' = 'mouse')) %>%
+  filter(!is.na(rat)) %>% distinct(rat, .keep_all = TRUE) %>% column_to_rownames("rat") %>%select(-V1)%>% rownames_to_column(var = "rowname")  
+    dfs[[basename(file)]] <- df  
+  } else {
+    df <- left_join(df,human_to_rat, by = c('V1' = 'human')) %>% filter(!is.na(rat)) %>% column_to_rownames("rat") %>% select(-V1) %>% rownames_to_column(var = "rowname")  
+
+    dfs[[basename(file)]] <- df  
+  }
+}
+
+all_ALRA_PBs <- Reduce(function(x, y) inner_join(x, y, by = "rowname"), dfs) %>% column_to_rownames(var = "rowname")
+
+
+all_ALRA_PBs <- all_ALRA_PBs %>% rownames_to_column('gene')
+
+write.table(all_ALRA_PBs, file = paste0(files_out, "all_ALRA_PBs.txt"), sep = "\t", quote = FALSE, row.names = FALSE,col.names = TRUE)
+
+
+
+```
+
+load and combine the SAVER PBs
+```{r load SAVER PBs}
+
+dfwd <- ("~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/")
+
+# no Imp
+svr <- list.files(paste0(dfwd,"SAVER"),  pattern = "*_combined.txt", full.names = TRUE)
+
+dfs <- list()
+
+for (file in svr) {
+  
+  df <- read.delim(file)
+  
+    if (startsWith(basename(file), "m_")) {
+    df <- df %>%  distinct(V1, .keep_all = TRUE) %>%  left_join(Rat_to_Mouse %>% distinct(mouse, .keep_all = TRUE), by = c('V1' = 'mouse')) %>%
+  filter(!is.na(rat)) %>% distinct(rat, .keep_all = TRUE) %>% column_to_rownames("rat") %>%select(-V1)%>% rownames_to_column(var = "rowname")  
+    dfs[[basename(file)]] <- df  
+  } else {
+    df <- left_join(df,human_to_rat, by = c('V1' = 'human')) %>% filter(!is.na(rat)) %>% column_to_rownames("rat") %>% select(-V1) %>% rownames_to_column(var = "rowname")  
+
+    dfs[[basename(file)]] <- df  
+  }
+}
+
+all_SAVER_PBs <- Reduce(function(x, y) inner_join(x, y, by = "rowname"), dfs) %>% column_to_rownames(var = "rowname")
+
+all_SAVER_PBs <- all_SAVER_PBs %>% rownames_to_column('gene')
+
+write.table(all_SAVER_PBs, file = paste0(files_out, "all_SAVER_PBs.txt"), sep = "\t", quote = FALSE, row.names = FALSE,col.names = TRUE)
+
+
+```
+
+load and combine the MAGIC PBs
+```{r load MAGIC PBs}
+
+dfwd <- ("~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/")
+
+# no Imp
+magic <- list.files(paste0(dfwd,"MAGIC"),  pattern = "*_combined.txt", full.names = TRUE)
+
+dfs <- list()
+
+for (file in magic) {
+  
+  df <- read.delim(file)
+  
+    if (startsWith(basename(file), "m")) {
+    df <- df %>%  distinct(V1, .keep_all = TRUE) %>%  left_join(Rat_to_Mouse %>% distinct(mouse, .keep_all = TRUE), by = c('V1' = 'mouse')) %>%
+  filter(!is.na(rat)) %>% distinct(rat, .keep_all = TRUE) %>% column_to_rownames("rat") %>%select(-V1)%>% rownames_to_column(var = "rowname")  
+    dfs[[basename(file)]] <- df  
+  } else {
+    df <- left_join(df,human_to_rat, by = c('V1' = 'human')) %>% filter(!is.na(rat)) %>% column_to_rownames("rat") %>% select(-V1) %>% rownames_to_column(var = "rowname")  
+
+    dfs[[basename(file)]] <- df  
+  }
+}
+
+all_MAGIC_PBs <- Reduce(function(x, y) inner_join(x, y, by = "rowname"), dfs) %>% column_to_rownames(var = "rowname")
+
+all_MAGIC_PBs <- all_MAGIC_PBs %>% rownames_to_column('gene')
+
+write.table(all_MAGIC_PBs, file = paste0(files_out, "all_MAGIC_PBs.txt"), sep = "\t", quote = FALSE, row.names = FALSE,col.names = TRUE)
+```
+
+Load the signatures matrices
+```{r sigs}
+
+swd <- list.dirs("~/OneDrive - UW/data for deconv/Signature matrices impute+no impute (D)/Testis/cross_compare_sigs", full.names = TRUE)
+
+# Initialize an empty list to hold sublists for each type
+all_matrices <- list()
+
+type <- c("noIMP", "ALRA", "SAVER", "MAGIC")
+
+for (dir in swd) {
+
+    for (t in type) {
+        if (grepl(t, dir)) {
+        
+            if (is.null(all_matrices[[t]])) {
+                all_matrices[[t]] <- list()
+            }
+            
+            rds_files <- list.files(dir, pattern = "Sig.rds", full.names = TRUE, recursive = TRUE)
+            
+            for (rds_file in rds_files) {
+            
+                data <- readRDS(rds_file)
+                file_name_part <- basename(dirname(rds_file))
+                new_name <- paste0(t, "_", file_name_part, "_sig")
+                all_matrices[[t]][[new_name]] <- data   }} }}
+
+
+
+```
+
+
+
+deconvolution draft code
+```{r deconv draft cross, include=FALSE}
+
+df_in <- all_noimp_PBs
+
+  DWLS <- data.frame()
+  SVR <- data.frame()
+  OLS <- data.frame()
+
+
+runDWLSall <- function(df_in, sig_matrix_in) {
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  
+  df <- df_in[rows, ]
+  sig_matrix_in <- sig_matrix_in[rows, ]
+  
+  samples <- colnames(df)
+  
+  for (i in samples) {
+    name <- i
+    dataBulk <- as.numeric(df[, i])
+    Signature <- as.matrix(sig_matrix_in)
+    Signature <- 2^Signature - 1  
+    
+    solDWLS <- solveDampenedWLS(Signature, dataBulk)
+    solSVR <- solveSVR(Signature, dataBulk)
+    solOLS <- solveOLS(Signature, dataBulk)
+    
+    DWLS <- rbind(DWLS, solDWLS)
+    SVR <- rbind(SVR, solSVR)
+    OLS <- rbind(OLS, solOLS)
+  }
+  
+  # Ensure correct column names and add method columns before binding results
+  colnames(DWLS) <- c(colnames(Signature))
+  DWLS$method <- 'DWLS'
+
+  colnames(SVR) <- c(colnames(Signature))
+  SVR$method <- 'SVR'
+  
+  colnames(OLS) <- c(colnames(Signature))
+  OLS$method <- 'OLS'
+
+  out <- rbind(DWLS, OLS, SVR)
+  out$ref <- rep(samples, times = 3)
+
+  return(out)
+}
+
+
+noimp_allcross <- lapply(all_matrices$noIMP, runDWLSall, df_in = all_noimp_PBs)
+
+result <- lapply(names(noimp_allcross), function(name) {
+  df <- noimp_allcross[[name]]
+  
+  if ("StromaLeydig" %in% colnames(df)) {
+    df <- df %>%
+      rename(Leydig = StromaLeydig)  }
+  
+  df <- df %>%
+    select(Sertoli, Leydig, method, ref) %>% mutate(list_item_name = name)  
+  return(df)
+})
+
+noImp_cross <- bind_rows(result)
+noImp_cross$imp <- 'none'
+
+```
+
+now the ALRAS
+```{r alra cross compare, include=FALSE}
+alra_allcross <- lapply(all_matrices$ALRA, runDWLSall, df_in = all_ALRA_PBs)
+
+result <- lapply(names(alra_allcross), function(name) {
+  df <- alra_allcross[[name]]
+  
+  if ("StromaLeydig" %in% colnames(df)) {
+    df <- df %>%
+      rename(Leydig = StromaLeydig)  }
+  
+  df <- df %>%
+    select(Sertoli, Leydig, method,ref) %>% mutate(list_item_name = name)  
+  return(df)
+})
+
+alra_cross <- bind_rows(result)
+alra_cross$imp <- 'alra'
+```
+
+now the SAVERs
+```{r saver cross compare, include=FALSE}
+saver_allcross <- lapply(all_matrices$SAVER, runDWLSall, df_in = all_SAVER_PBs)
+
+result <- lapply(names(saver_allcross), function(name) {
+  df <- saver_allcross[[name]]
+  
+  if ("StromaLeydig" %in% colnames(df)) {
+    df <- df %>%
+      rename(Leydig = StromaLeydig)  }
+  
+  df <- df %>%
+    select(Sertoli, Leydig, method, ref) %>% mutate(list_item_name = name)  
+  return(df)
+})
+
+saver_cross <- bind_rows(result)
+saver_cross$imp <- 'saver'
+```
+
+
+now the MAGICs
+```{r magic cross compare, include=FALSE}
+magic_allcross <- lapply(all_matrices$MAGIC, runDWLSall, df_in = all_MAGIC_PBs)
+
+result <- lapply(names(magic_allcross), function(name) {
+  df <- magic_allcross[[name]]
+  
+  if ("StromaLeydig" %in% colnames(df)) {
+    df <- df %>%
+      rename(Leydig = StromaLeydig)  }
+  
+  df <- df %>%
+    select(Sertoli, Leydig, method, ref) %>% mutate(list_item_name = name)  
+  return(df)
+})
+
+magic_cross <- bind_rows(result)
+magic_cross$imp <- 'magic'
+```
+
+
+combine all the objects for plotting
+```{r combine}
+
+all_crosses <- rbind(magic_cross,alra_cross,saver_cross, noImp_cross) %>% 
+  mutate(trues = str_extract(ref, "\\d{2}$"),
+         PB = str_sub(ref, 1, nchar(ref) - 2))
+
+
+all_crosses$PBbase<- sub("^(.*_[^_]+)_.*$", "\\1", all_crosses$PB)
+all_crosses$PBbase <- sub("_[^_]*$", "", all_crosses$PBbase)
+
+all_crosses$REFbase<- sub("^(.*_[^_]+)_.*$", "\\1", all_crosses$list_item_name)
+all_crosses$REFbase <- sub("_[^_]*$", "", all_crosses$REFbase)
+all_crosses$REFbase <- sub("^[^_]+_", "", all_crosses$REFbase)
+
+saveRDS(all_crosses,"~/OneDrive - UW/data for deconv/Signature matrices impute+no impute (D)/Testis/cross_compare_sigs/all_crosses_wocb.rds")
+
+```
+
+```{r file load}
+all_crosses <- readRDS("~/OneDrive - UW/data for deconv/Signature matrices impute+no impute (D)/Testis/cross_compare_sigs/all_crosses_wocb.rds")
+cb_testis <- readRDS("~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/cibersort_cross_outputs/cb_testis.rds") %>% rename(trues = pb)%>% select(Mixture, Sertoli, Leydig, cell, PBbase, REFbase, trues, imp)%>%
+  mutate(method = 'CIBERSORTx')
+
+```
+
+matching checks
+
+
+table(all_crosses$PBbase)
+#.   adult112   H_i_120   H_i_124   H_I.120   H_I.124   h_n_124    hi_124 m_d7_diff    m_n_d7 m_n_d7_d2 m_n_d7_SL  m_neo_d2  m_neo_d7     nh120
+ #     360        90        90        90        90        90        90       360        72        18       180       360        90     180
+       
+
+table(all_crosses$REFbase)
+
+ #   h_a_112   h_i_120   h_i_124 m_d7_diff m_d7_DIFF m_n_d7_SL  m_neo_d2  m_neo_d7 
+  #    360       360       360        90       270       270       360        90 
+
+
+
+FINAL LABELS --->   h_a_112     h_i_120     h_i_124     m_d7_diff     m_n_d7_SL    m_n_d2
+
+```{r recode}
+
+all_crosses <- all_crosses %>%
+  mutate(REFbase = recode(REFbase,
+                    "m_d7_DIFF" = "m_d7_diff",  
+                    "m_n_d7" = "m_neo_d7",
+                   "adult112" = "h_a_112", 
+                    
+                    "H_i_120" = "h_i_120", 
+                    "H_I.120" = "h_i_120", 
+                    "nh120" = "h_i_120", 
+                    
+                    "H_i_124" = "h_i_124", 
+                    "H_I.124" = "h_i_124", 
+                    "h_n_124" = "h_i_124",
+                    "hi_124" = "h_i_124",
+                    
+
+                    "m_neo_d7" = "m_n_d7_SL",
+                    "m_n_d7_d2" = "m_n_d7_SL",
+                    
+                    "m_neo_d2" = "m_n_d2",
+
+ 
+                    "m_n_d2" = "m_neo_d2",)) 
+
+all_crosses <- all_crosses %>%
+  mutate(PBbase = recode(PBbase,
+                    "adult112" = "h_a_112", 
+                    
+                    "H_i_120" = "h_i_120", 
+                    "H_I.120" = "h_i_120", 
+                    "nh120" = "h_i_120", 
+                    
+                    "H_i_124" = "h_i_124", 
+                    "H_I.124" = "h_i_124", 
+                    "h_n_124" = "h_i_124",
+                    "hi_124" = "h_i_124",
+                    
+
+                    "m_neo_d7" = "m_n_d7_SL",
+                    "m_n_d7_d2" = "m_n_d7_SL",
+                    
+                    "m_neo_d2" = "m_n_d2" ) )
+
+
+
+```
+
+
+
+Now we want to remove the cases where it is same-same
+```{r filter sames}
+
+filt_crosses <- all_crosses %>% group_by(imp) %>% filter(PBbase != REFbase) %>% ungroup() %>%
+  mutate(cell = ifelse(PBbase == "h_a_112", Leydig, Sertoli))%>%
+  filter(PBbase != "m_n_d7_SL" & REFbase != "m_n_d7_SL")%>%
+  rename(Mixture = ref)%>%
+  select(Mixture, Sertoli, Leydig, cell, PBbase, REFbase, trues, imp, method)
+
+
+```
+
+
+
+combine with Cibersort ones
+```{r combine files}
+
+all_testis <- rbind(filt_crosses, cb_testis) %>%
+  filter(PBbase != 'm_n_d7') %>%
+  filter(PBbase != 'm_n_d7_sl') %>%
+  mutate(
+    imp = recode(imp, 'noimp' = "No Imp.", 'none' = "No Imp.", 'alra' = 'ALRA', 'saver' = 'SAVER', 'magic' = 'MAGIC'),
+    across(c(method, imp, PBbase, REFbase), as.factor),
+    across(c(Sertoli, Leydig, trues), as.numeric),
+    
+    trues = trues/100)
+
+saveRDS(all_testis,"~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/all_testis_wCB.rds")
+
+
+```
+
+
+plotting
+```{r plots}
+
+
+df <- all_testis %>% mutate(cell = if_else(cell < 0, 0, cell))
+
+df$imp <- factor(df$imp, levels = c("ALRA", "MAGIC", "No Imp.", "SAVER"))
+
+df <- df %>%
+  mutate(
+    method = factor(method, levels = c( "CIBERSORTx","DWLS",  "SVR","OLS")),
+    imp = factor(imp, levels = c("No Imp.", "ALRA" , "SAVER", "MAGIC" )))
+
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=df, aes(x=trues, y=cell, color =REFbase)) +
+  geom_point(size=3, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 2) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=ticks, limits=c(0, 1)) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_d3(labels=c("Adult-H", "Infant-120", "Infant-124", "Day 7-M","Day 2-M")) +    
+  theme_bw(base_size = 16, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(method~imp, nrow=4) 
+
+plots
+
+ggsave(plots, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Deconvolution output (F)/Testis/plots/cross_compare_testis.png", width = 9, height=12, units = 'in')
+
+
+
+
+```
+
+
+
+```{r testis cross-compare mape}
+
+
+mapes <-  all_testis %>%  
+            group_by(method, imp) %>%
+            summarise(mape_value = mape(trues, cell)) %>%
+            mutate(percent = mape_value*100) %>%
+            ungroup()
+
+rmse <-  all_testis %>%  
+            group_by(method, imp) %>%
+            summarise(rmse_value = rmse(trues, cell)) %>%
+            ungroup()
+
+
+
+mape_minmax <-  all_testis %>% 
+ group_by(method, imp, REFbase) %>%
+  summarise(
+    mape_value = mape(trues, cell)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(mape_value)*100,
+        max=max(mape_value)*100)
+
+rmse_minmax <-  all_testis %>% 
+ group_by(method, imp, REFbase) %>%
+  summarise(
+    rmse_value = rmse(trues, cell)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(rmse_value),
+        max=max(rmse_value))
+
+
+```
