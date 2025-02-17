@@ -4,28 +4,12 @@
 
 ### Brad C. Hansen, Christopher M. Arian, Yuting Zeng, Meg G. Takezawa, Ashleigh B. Theberge, Elaine M. Faustman, Kenneth E. Thummel, Edward J. Kelly
 
-### Brad C. Hansen(^)1,6,*(^), Christopher M. Arian2,6,†,*, Yuting Zeng3, Meg G. Takezawa3, Ashleigh B. Theberge3,4, Elaine M. Faustman1, Kenneth E. Thummel2, Edward J. Kelly2,5,6,# 
+##### University of Washington, Seattle, Washington, U.S.A.
+
+##### Brad Hansen and Christopher Arian contributed equally.
+##### Edward Kelly is the corresponding author for this report.
 
 
-*These authors contributed equally to this manuscript
+#### Abstract:
 
-1Department of Environmental and Occupational Health Sciences, University of Washington, Seattle, Washington, U.S.A.
-
-2Department of Pharmaceutics, University of Washington, Seattle, Washington, U.S.A.
-3Department of Chemistry, University of Washington, Seattle, Washington, U.S.A.
-4Department of Urology, University of Washington, Seattle, Washington, U.S.A.
-5Kidney Research Institute, University of Washington, Seattle, Washington, U.S.A.
-6Institute for Stem Cells and Regenerative Medicine, University of Washington, Seattle, Washington, U.S.A.
-†Presently at the Department of Laboratory Medicine and Pathology, University of Washington, Seattle, Washington, U.S.A.
-#Corresponding author
-
-
-
-Brad Hansen and Christopher Arian contributed equally.
-Edward Kelly is the corresponding author for this report.
-
-
-Abstract:
-
-Leveraging RNA-seq deconvolution to improve complex in vitro model characterization
-
+Accelerating development of complex in vitro models (CIVMs) drives a need for additional methods to characterize these systems for use in toxicology and drug development. Relative to traditional cell culture, CIVMs may use a lower number of cells, are cultured for longer periods of time, and typically involve engineered 3-D cell organization. Standard single-cell assessment tools are not conducive to these types of complex models due to cell isolation stress, cell loss, and high cost. In this report, we benchmark RNA-seq deconvolution, which utilizes publicly available scRNA-seq datasets to predict cell proportions from bulk RNA-seq data derived from two CIVMs: a stem-cell-based human intestine epithelia model and a neonatal rodent testis model. We consider the impact of multiple imputation methods for scRNA-seq to restore the gene distribution of the original tissue to generate a better cell type signature and multiple deconvolution methods. The accuracy of deconvolution methods varied significantly in our analyses but provided valuable information on the emergence of an enterocyte cell population from the LGR5+ crypt stem cells following differentiation. In the testis model, deconvolution indicated that a small population of germ cells were retained over time, and that cell type estimates remained stable with physiologically relevant hormone stimulation. In our analysis, using imputed single cell references improved deconvolution accuracy. Deconvolution can be a useful tool for novel CIVM characterization, especially with rapidly growing libraries of single-cell data across tissues and developmental time.
