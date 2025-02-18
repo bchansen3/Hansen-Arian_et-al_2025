@@ -4,37 +4,10 @@ date: '`r format(Sys.Date(), "%B %d, %Y")`'
 author:
   - name: Brad Hansen
     affiliation: "The University of Washington"
-  - name: Anish Mahadeo
-    affiliation: "The University of Washington"
   - name: Chris Arian
     affiliation: "The University of Washington"
     
-abstract: > 
-  Assessment of the value of bulk RNA-seq deconvolution to estimate the proportion of cell types in MPS systems.
----
 
-## Introduction
-
-link for linear regression methods of RNA-seq deconvolution https://genomebiology.biomedcentral.com/articles/10.1186/s13059-017-1256-5
-
-# MPS/organoid systems in toxicology/drug discovery
-
-kidney
-intestine
-testis
-
-# Single-cell sequencing
-
-https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7695353/
-Second, if scRNA-seq data are used to build a signature matrix, it is straightforward to characterize its performance using synthetic tissues created from single-cell transcriptomes. To ensure an unbiased assessment, these source scRNA-seq transcriptomes used for the creation of a synthetic tissue should be held out from the creation of the signature matrix. Moreover, to avoid violating linearity assumptions, each single-cell transcriptome should be represented in nonlog linear space prior to creating synthetic mixtures. By allowing for fine-grained control over the composition of each mixture, this strategy allows one to systematically evaluate both proportion estimation and cellular detection limits without the cost and time associated with profiling new samples with associated ground-truth expectations of compositional representation.
-
-## Methods
-
-The following tissues will be used in this manuscript: duodenum (intestine), proximal tubule (kidney), and testis.
-
-# TPM vs. CPM
-https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02290-6#Sec2
-more important to just be in same method
 
 ## Install Packages
 
