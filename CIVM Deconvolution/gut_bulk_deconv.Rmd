@@ -1,0 +1,491 @@
+---
+title: "Gut-crosscompare_DWLS"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, quadprog, MuSiC, Seurat, Biobase, SingleCellExperiment)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+
+ctdir <- '~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/Cell refs/'
+
+metadata <- read_excel("~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_bulk_metadata.xlsx")
+
+```
+
+
+
+load the PBs
+```{r load PBs}
+
+# load in the data
+
+gut_bulk <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/Organoid RNAseq/enteroid_RNAseq_cpm.txt')%>% column_to_rownames('GENEID')
+
+unlist_func <- function(list) {bind_rows(lapply(names(list), function(name) {
+    df <- list[[name]]
+    df$source <- name
+    df <- df %>% select(-any_of(c("Other", "Best4", "EEC", "Tuftcell")))
+
+  refs <- unlist(strsplit(name, "_"))  
+  df %>%
+    mutate(#pb = sapply(strsplit(refs, "_"), `[`, 1),
+           #pbref = sapply(strsplit(refs, "_"), `[`, 2),
+          source = name,
+           imp = refs[1],
+           sigref = refs[2])}))}
+
+
+unlist_SVR <- function(list) {bind_rows(lapply(names(list), function(name) {
+    df <- list[[name]]
+    df$source <- name
+
+  refs <- unlist(strsplit(name, "_"))  
+  df %>%
+    mutate(
+          source = name,
+           imp = refs[1],
+           sigref = refs[2])}))}
+```
+
+
+Load the signatures matrices
+```{r sigs}
+#important to use the corrected folder
+
+swd <- list.dirs("~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/Gut_cellRefs/", full.names = TRUE)
+
+# Initialize an empty list to hold sublists for each type
+all_matrices <- list()
+
+type <- c( "ALRA", "MAGIC")
+
+for (dir in swd) {
+
+    for (t in type) {
+        if (grepl(t, dir)) {
+        
+            if (is.null(all_matrices[[t]])) {
+                all_matrices[[t]] <- list() }
+            
+            rds_files <- list.files(dir, pattern = "Sig.rds", full.names = TRUE, recursive = TRUE)
+            
+            for (rds_file in rds_files) {
+            
+                data <- readRDS(rds_file)
+                colnames(data) <- gsub("cell", "", colnames(data), ignore.case = TRUE)
+                file_name_part <- basename(dirname(rds_file))
+                new_name <- paste0(t, "_", file_name_part, "_sig")
+                all_matrices[[t]][[new_name]] <- data   }} }}
+
+```
+
+```{r svr, include=FALSE}
+
+SVR <- list()
+
+runSVRall <- function(df_in, sig_matrix_in) {
+  
+  SVR <- data.frame()
+
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  df <- df_in[rows, ]
+  sig_matrix_in <- sig_matrix_in[rows, ]
+
+  
+  samples <- colnames(df)
+  
+  for (i in samples) {
+    name <- i
+    dataBulk <- as.numeric(df[, i])
+    Signature <- as.matrix(sig_matrix_in)
+
+    solSVR <- solveSVR(Signature, dataBulk)
+    
+
+    SVR <- rbind(SVR, solSVR)
+  }
+
+  colnames(SVR) <- c(colnames(Signature))
+  SVR$method <- 'SVR'
+  
+
+  out <- rbind(SVR)
+  out$ref <- samples
+
+  return(out)
+}
+
+magic_SVR <- unlist_func(lapply(all_matrices$MAGIC, runSVRall, df_in = gut_bulk))%>% left_join(metadata, by = 'ref')%>%select(-c("BEST4", "Tuft",  'Paneth'))%>% pivot_longer(cols=c('Enterocyte' ,'Goblet' ,'Proliferative'), names_to = "type")
+
+
+
+
+df <- magic_SVR
+
+mean_df <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+mean_df_svr <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+df$diff <- factor(df$diff, levels = c("Undifferentiated", "Differentiated"))
+mean_df$diff <- factor(mean_df$diff, levels = c("Undifferentiated", "Differentiated"))
+
+SVR_bulk <- ggplot(df, aes(x = diff, y = value)) +
+  geom_boxplot(aes(fill = 'lightgrey'), size =1.2,outlier.shape = NA, alpha = 0.2) +
+  geom_point(aes(fill = donor, shape=sigref), alpha = 0.8, size = 5, color='black') +
+  scale_shape_manual(values = c(21, 22, 23))+
+  geom_line( data = mean_df,aes(x = diff, y = mean_value, group = donor, color = donor),size = 1.2) +
+  scale_y_continuous(breaks = c(0,0.25, 0.5, 0.75, 1), limits = c(-0.05,1))+
+  xlab(" ")+
+  ylab("Estimated Cell Proportion")+
+  scale_fill_npg() +  
+  scale_color_npg() +
+  theme_classic(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Enteroid donor") +
+  guides(color = guide_legend(title.position = "top"))+ facet_wrap(~type)
+
+
+
+SVR_bulk
+
+#ggsave(SVR_bulk, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/SVR_bulk.png", width = 12, height=6, units = 'in', bg = 'white')
+
+
+
+```
+
+
+```{r DWLS, include=FALSE}
+
+runDWLSall <- function(df_in, sig_matrix_in) {
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  df <- df_in[rows, ]
+  sig_matrix <- sig_matrix_in[rows, ]
+
+  samples <- colnames(df)
+  results_matrix <- matrix(NA, nrow = length(samples), ncol = ncol(sig_matrix))
+  rownames(results_matrix) <- samples
+  colnames(results_matrix) <- colnames(sig_matrix)
+
+  solveOLSInternal<-function(S,B){
+  D<-t(S)%*%S
+  d<-t(S)%*%B
+  A<-cbind(diag(dim(S)[2]))
+  bzero<-c(rep(-.25,dim(S)[2]))
+  solution<-solve.QP(D,d,A,bzero)$solution
+  names(solution)<-colnames(S)
+  return(solution)
+}
+  #this is from DWLS github
+solveDampenedWLS<-function(S,B){
+
+  
+    solution<-solveOLSInternal(S,B)
+
+    iterations<-0
+  changes<-c()
+
+    j<-findDampeningConstant(S,B,solution)
+  change<-1
+  while(change>.01 & iterations<1000){
+    newsolution<-solveDampenedWLSj(S,B,solution,j)
+    #decrease step size for convergence
+    solutionAverage<-rowMeans(cbind(newsolution,matrix(solution,nrow = length(solution),ncol = 4)))
+    change<-norm(as.matrix(solutionAverage-solution))
+    solution<-solutionAverage
+    iterations<-iterations+1
+    changes<-c(changes,change)
+  }
+  print(round(solution/sum(solution),5))
+  return(solution/sum(solution))
+}
+
+
+  for (i in seq_along(samples)) {
+    sample_name <- samples[i]
+    B <- as.numeric(df[, sample_name])
+    S <- as.matrix(sig_matrix)
+
+#Actual deconv
+    result <- solveDampenedWLS(S, B)
+
+    # Store the result in the appropriate place
+    results_matrix[sample_name, ] <- result
+  }
+
+  # Convert the matrix to a data frame
+  results_df <- as.data.frame(results_matrix)
+  return(results_df)
+}
+
+
+
+alra_DWLS <- unlist_func(lapply(all_matrices$ALRA, runDWLSall, df_in = gut_bulk))%>% rownames_to_column('ref')
+
+plot_DWLS <- alra_DWLS %>%mutate(ref = sub("\\..*$", "", ref)) %>% left_join(metadata, by = 'ref')%>%select(-c("BEST4", "Tuft",  'Paneth'))%>% pivot_longer(cols=c('Enterocyte' ,'Goblet' ,'Proliferative'), names_to = "type")
+
+df <- plot_DWLS%>% mutate(sigref = if_else(value < 0, "LOW", sigref))
+
+mean_df <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+mean_df_dwlsalra <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+df$diff <- factor(df$diff, levels = c("Undifferentiated", "Differentiated"))
+mean_df$diff <- factor(mean_df$diff, levels = c("Undifferentiated", "Differentiated"))
+
+dwls_bulk <- ggplot(df, aes(x = diff, y = value)) +
+  geom_boxplot(aes(fill = 'lightgrey'), size =1.2,outlier.shape = NA, alpha = 0.2) +
+  geom_point(aes(fill = donor, shape=sigref), alpha = 0.8, size = 5, color='black') +
+  scale_shape_manual(values = c('Paper1'  = 21, 'Paper2' = 22, 'Paper3' = 23, 'LOW' = 4))+
+    scale_y_continuous(breaks = c(0,0.25, 0.5, 0.75, 1), limits = c(-0.05,1))+
+
+  geom_line( data = mean_df,aes(x = diff, y = mean_value, group = donor, color = donor),size = 1.2) +
+  xlab(" ")+
+  ylab("Estimated Cell Proportion")+
+  scale_fill_npg() +  
+  scale_color_npg() +
+  theme_classic(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Enteroid donor") +
+  guides(color = guide_legend(title.position = "top"))+ facet_wrap(~type)
+
+
+
+
+dwls_bulk
+
+ggsave(dwls_bulk, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/dwlsalra_gut_bulk.png", width = 12, height=6, units = 'in', bg = 'white')
+
+```
+
+
+```{r music}
+
+gut_counts <- read.delim("~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/Organoid rnaseq counts data/Organoid_RNAseq_Counts.txt")%>% column_to_rownames('GENEID')%>%as.matrix
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"Paper1_NoImp_CellRef_counts.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/Labeled seurat objects/paper1_LABELS.rds')
+cellIDs$donor <- sub(".*_(.*)", "\\1", cellIDs$cellID)
+
+table(cellIDs$donor)
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+paper1_music <- music_prop(gut_counts,sce,clusters = 'clusterID', samples = 'donor')
+
+```
+
+```{r paper2 music}
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"Paper2_NoImp_CellRef_counts.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/Labeled seurat objects/paper2_LABELS.rds')
+cellIDs$donor <- sub(".*_(.*)", "\\1", cellIDs$cellID)
+
+table(cellIDs$donor)
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+paper2_music <- music_prop(gut_counts,sce,clusters = 'clusterID', samples = 'donor')
+
+```
+
+Paper3
+```{r paper3 music}
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"Paper3_NoImp_CellRef_counts.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/Labeled seurat objects/paper3_LABELS.rds')
+cellIDs$donor <- sub(".*_(.*)", "\\1", cellIDs$cellID)
+
+table(cellIDs$donor)
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+paper3_music <- music_prop(gut_counts,sce,clusters = 'clusterID', samples = 'donor')
+
+GUT_music_bulk <- list(paper1_music,paper2_music,paper3_music)
+
+saveRDS(GUT_music_bulk, '~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/gut_music_BULKDECONV_results.rds')
+
+paper_1music <- as.data.frame(GUT_music_bulk[[1]]$Est.prop.weighted) %>% rownames_to_column('ref') %>% mutate(sigref = 'Paper1', method = "music")
+paper_2music <- as.data.frame(GUT_music_bulk[[2]]$Est.prop.weighted)%>% rownames_to_column('ref') %>% mutate(sigref = 'Paper2', method = "music")
+paper_3music <- as.data.frame(GUT_music_bulk[[3]]$Est.prop.weighted)%>% rownames_to_column('ref') %>% mutate(sigref = 'Paper3', method = "music")
+
+music_deconv <- rbind(paper_1music,paper_2music,paper_3music)%>% left_join(metadata, by = 'ref')%>%select(-c("BEST4",  'EEC'))%>% pivot_longer(cols=c('Enterocyte' ,'Goblet cell' ,'Proliferative cell'), names_to = "type")
+
+
+df <- music_deconv
+
+mean_df_music <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+mean_df <- df %>%
+  group_by(diff,type,donor) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+df$diff <- factor(df$diff, levels = c("Undifferentiated", "Differentiated"))
+mean_df$diff <- factor(mean_df$diff, levels = c("Undifferentiated", "Differentiated"))
+
+music_bulk <- ggplot(df, aes(x = diff, y = value)) +
+  geom_boxplot(aes(fill = 'lightgrey'), size =1.2,outlier.shape = NA, alpha = 0.2) +
+  geom_point(aes(fill = donor, shape=sigref), alpha = 0.8, size = 5, color='black') +
+  scale_shape_manual(values = c(21, 22, 23))+
+  scale_y_continuous(breaks = c(0,0.25, 0.5, 0.75, 1), limits = c(-0.05,1))+
+  geom_line( data = mean_df,aes(x = diff, y = mean_value, group = donor, color = donor),size = 1.2) +
+  xlab(" ")+
+  ylab("Estimated Cell Proportion")+
+  scale_fill_npg() +  
+  scale_color_npg() +
+  theme_classic(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Enteroid donor") +
+  guides(color = guide_legend(title.position = "top"))+ facet_wrap(~type)
+
+
+music_bulk
+
+#ggsave(music_bulk, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/music_bulk.png", width = 12, height=6, units = 'in', bg = 'white')
+
+#ggsave(music_bulk, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/music_LEGEND.png", width = 30, height=30, units = 'in', bg = 'white')
+
+
+#data_bulk_forChris <- list(music = music_deconv, dwls = alra_DWLS, svr = magic_SVR)
+
+#saveRDS(data_bulk_forChris,'~/OneDrive - UW/data for deconv/Paper revision materials/DATA/data_bulk_forChris.rds')
+
+```
+
+
+
+make table for general stats
+```{r general stats from results}
+
+colnames(music_deconv)
+colnames(plot_DWLS)
+colnames(magic_SVR)
+
+GUT_data_for_table <- list(music = music_deconv,dwls = plot_DWLS, svr = magic_SVR)
+
+saveRDS(GUT_data_for_table, '~/OneDrive - UW/data for deconv/Paper revision materials/DATA/GUT_data_for_table.rds')
+
+GUT_data_for_table <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/GUT_data_for_table.rds')
+
+music_deconv <- GUT_data_for_table$music
+plot_DWLS <- GUT_data_for_table$dwls
+magic_SVR <- GUT_data_for_table$svr
+
+
+plot_DWLS$method <- 'dwls'
+
+setequal(colnames(plot_DWLS), colnames(magic_SVR))
+
+music_deconv_table <- music_deconv%>% select(-c("Other"    ,   "Tuft cell" ,  "Paneth cell")) %>% mutate(imp = 'NoIMP', source = NA)
+
+
+setequal(colnames(magic_SVR), colnames(music_deconv_table))
+
+
+gut_table <- rbind(plot_DWLS,magic_SVR,music_deconv_table)
+
+gut_summary <- gut_table %>%
+  group_by(donor,diff, method,type) %>%
+  summarise(
+    mean = mean(value),
+    min = min(value),
+    max = max(value),
+    .groups = 'drop')%>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+
+write_xlsx(gut_summary, "~/Desktop/gut_summarytable.xlsx")
+
+```
+
+

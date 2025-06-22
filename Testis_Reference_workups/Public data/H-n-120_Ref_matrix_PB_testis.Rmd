@@ -1,0 +1,704 @@
+---
+title: "Reference matrix and pseudobulk creation"
+author: "Brad Hansen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tibble, tidyr, readr, stringr,readxl, ggplot2,ggsci, ggthemes, Seurat, scran, SeuratDisk)
+
+```
+
+
+
+LOAD Non-Imputed DATASHEETS USING THE  "combineCPMs_ConvertGenes.Rmd" file
+
+There are 5 datasets:
+
+3 human, 2 mouse
+
+The human objects DO NOT have a "Stroma" cell type. 
+
+
+Human Neonate 120 
+```{r ha112 PsB}
+
+a <- tibble(cellID = colnames(h_infant_120), clusterID = Idents(h_infant_120))
+
+table(a$clusterID)
+
+
+#a = object
+#b = downsample size
+#c = seed set
+samp_ha <- function(a, b, c){
+  
+  lg <- subset(a, celltype == "Leydig")
+  germ <- subset(a, celltype == "Germ")
+  endo <- subset(a, celltype == "Endo")
+  ptm <- subset(a, celltype == "PTM")
+  srt <- subset(a, celltype == "Sertoli")
+  imm <- subset(a, celltype == "Immune")
+  
+  set.seed(c)
+  ds_lg <- if(table(Idents(lg)) > b){
+            lg[, sample(colnames(lg), size = b, replace = F)]
+  } else {
+      lg
+    }
+  set.seed(c)
+  ds_germ <- if(table(Idents(germ)) > b){
+            germ[, sample(colnames(germ), size = b, replace = F)]
+  } else {
+      germ
+    }
+  set.seed(c)
+  ds_endo <- if(table(Idents(endo)) > b){
+            endo[, sample(colnames(endo), size = b, replace = F)]
+  } else {
+      endo
+    }
+  set.seed(c)
+  ds_ptm <- if(table(Idents(ptm)) > b){
+            ptm[, sample(colnames(ptm), size = b, replace = F)]
+  } else {
+      ptm
+    }
+  set.seed(c)
+  ds_srt <- if(table(Idents(srt)) > b){
+            srt[, sample(colnames(srt), size = b, replace = F)]
+  } else {
+      srt
+    }
+  set.seed(c)
+  ds_imm <- if(table(Idents(imm)) > b){
+            imm[, sample(colnames(imm), size = b, replace = F)]
+  } else {
+      imm
+    }
+  
+  merger <- merge(x = ds_lg, y = list(ds_germ, ds_endo, ds_ptm, ds_srt, ds_imm), merge.data = T)
+  return(merger)
+}
+
+df_samp <- samp_ha(h_infant_120, 50, 23)
+
+samp2 <- function(a, b, c, d){
+  ct <- subset(a, idents = d)
+  set.seed(c)
+  subs <- ct[, sample(colnames(ct), size = b, replace = F)]
+  return(subs)
+}
+
+#removing the sampled cells to make pseudobulk from the remainder
+cells_for_pseudo <- colnames(h_infant_120)[!(colnames(h_infant_120) %in% colnames(df_samp))]
+# re-add the Sertoli cells
+germ_cells <- colnames(subset(h_infant_120, celltype =="Germ"))
+cells_for_pseudo <- union(cells_for_pseudo, germ_cells)
+
+
+## THis makes it so the germ cells are represented in all - since there are only 36 cells
+
+
+```
+
+Neonate Human 120 NoIMP Psuedobulks + Ref
+```{r adult 112 pbs}
+
+pseudo <- h_infant_120[, cells_for_pseudo]
+
+table(pseudo$celltype)
+
+# Sertoli     PTM    Endo  Leydig    Germ  Immune 
+#    620     105     285      76      36       0 
+
+
+#We will be making 5 pseudobulks total with ~250 cells total - refer to code for ground truth values of cell type proportions
+
+
+
+#1 90% Sertoli cells (250 cells)
+lg <- data.frame(samp2(pseudo, 6, 23, "Leydig")@assays$cpm$data)
+germ <- data.frame(samp2(pseudo, 7, 23, "Germ")@assays$cpm$data)
+ptm <- data.frame(samp2(pseudo, 6, 23, "PTM")@assays$cpm$data)
+endo <- data.frame(samp2(pseudo, 6, 23, "Endo")@assays$cpm$data)
+srt <- data.frame(samp2(pseudo, 225, 23, "Sertoli")@assays$cpm$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file = "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/noImp/neonate_h_120/nh120_NoImp_SRT90.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 75% Sertoli cells (252 cells)
+lg <- data.frame(samp2(pseudo, 16, 23, "Leydig")@assays$cpm$data)
+germ <- data.frame(samp2(pseudo, 16, 23, "Germ")@assays$cpm$data)
+ptm <- data.frame(samp2(pseudo, 16, 23, "PTM")@assays$cpm$data)
+endo <- data.frame(samp2(pseudo, 15, 23, "Endo")@assays$cpm$data)
+srt <- data.frame(samp2(pseudo, 189, 23, "Sertoli")@assays$cpm$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/noImp/neonate_h_120/nh120_NoImp_SRT75.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 50% Sertoli cells
+lg <- data.frame(samp2(pseudo, 31, 23, "Leydig")@assays$cpm$data)
+germ <- data.frame(samp2(pseudo, 32, 23, "Germ")@assays$cpm$data)
+ptm <- data.frame(samp2(pseudo, 31, 23, "PTM")@assays$cpm$data)
+endo <- data.frame(samp2(pseudo, 31, 23, "Endo")@assays$cpm$data)
+srt <- data.frame(samp2(pseudo, 125, 23, "Sertoli")@assays$cpm$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/noImp/neonate_h_120/nh120_NoImp_SRT50.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 25% Sertoli cells 252 cells
+lg <- data.frame(samp2(pseudo, 51, 23, "Leydig")@assays$cpm$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$cpm$data)
+ptm <- data.frame(samp2(pseudo, 51, 23, "PTM")@assays$cpm$data)
+endo <- data.frame(samp2(pseudo, 51, 23, "Endo")@assays$cpm$data)
+srt <- data.frame(samp2(pseudo, 63, 23, "Sertoli")@assays$cpm$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/noImp/neonate_h_120/nh120_NoImp_SRT25.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+#5 10% Sertoli cells
+lg <- data.frame(samp2(pseudo, 63, 23, "Leydig")@assays$cpm$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$cpm$data)
+ptm <- data.frame(samp2(pseudo, 63, 23, "PTM")@assays$cpm$data)
+endo <- data.frame(samp2(pseudo, 63, 23, "Endo")@assays$cpm$data)
+srt <- data.frame(samp2(pseudo, 25, 23, "Sertoli")@assays$cpm$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/noImp/neonate_h_120/nh120_NoImp_SRT10.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+### MAKE CELL REFERENCE
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.frame(GetAssayData(df_samp, assay = "cpm"))
+b$genes <- rownames(b)
+#sum(duplicated(b$genes))
+
+
+human_to_rat <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Human.rds")
+# Keep only the Gene Names
+human_to_rat <- human_to_rat[,c("Human_GRCh38_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(human_to_rat) <- c("human","rat")
+human_to_rat <- human_to_rat %>% distinct()
+
+b <- left_join(b,human_to_rat, by = c('genes' = 'human')) %>% column_to_rownames(., var="rat") %>% select(-genes)
+
+
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "~/OneDrive - UW/data for deconv/Testis_cellRefs/h_n_120.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+```
+
+Neonate Human 120 ALRA Psuedobulks + Ref
+```{r adult 112 pbs}
+
+hn120_ALRA <- readRDS("~/OneDrive - UW/data for deconv/Data matrices (C)/Testis/alra/h_infant_120_t_alra.rds")
+
+
+hn120_ALRA <- hn120_ALRA[[3]]
+
+hn120_ALRA <- t(hn120_ALRA)
+colnames(hn120_ALRA) <- colnames(h_infant_120)
+
+ALRA_pseudo <- hn120_ALRA[,cells_for_pseudo]
+
+pseudo[["ALRA"]] <- CreateAssayObject(counts = ALRA_pseudo)
+
+
+table(pseudo$celltype)
+
+# Sertoli     PTM    Endo  Leydig    Germ  Immune 
+#    620     105     285      76      36       0 
+
+
+#We will be making 5 pseudobulks total with 500 cells total - refer to code for ground truth values of cell type proportions
+
+
+
+#1 90% Sertoli cells (250 cells)
+lg <- data.frame(samp2(pseudo, 6, 23, "Leydig")@assays$ALRA$data)
+germ <- data.frame(samp2(pseudo, 7, 23, "Germ")@assays$ALRA$data)
+ptm <- data.frame(samp2(pseudo, 6, 23, "PTM")@assays$ALRA$data)
+endo <- data.frame(samp2(pseudo, 6, 23, "Endo")@assays$ALRA$data)
+srt <- data.frame(samp2(pseudo, 225, 23, "Sertoli")@assays$ALRA$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file = "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/ALRA/neonate_h_120/nh120_ALRA_SRT90.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 75% Sertoli cells (252 cells)
+lg <- data.frame(samp2(pseudo, 16, 23, "Leydig")@assays$ALRA$data)
+germ <- data.frame(samp2(pseudo, 16, 23, "Germ")@assays$ALRA$data)
+ptm <- data.frame(samp2(pseudo, 16, 23, "PTM")@assays$ALRA$data)
+endo <- data.frame(samp2(pseudo, 15, 23, "Endo")@assays$ALRA$data)
+srt <- data.frame(samp2(pseudo, 189, 23, "Sertoli")@assays$ALRA$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/ALRA/neonate_h_120/nh120_ALRA_SRT75.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 50% Sertoli cells
+lg <- data.frame(samp2(pseudo, 31, 23, "Leydig")@assays$ALRA$data)
+germ <- data.frame(samp2(pseudo, 32, 23, "Germ")@assays$ALRA$data)
+ptm <- data.frame(samp2(pseudo, 31, 23, "PTM")@assays$ALRA$data)
+endo <- data.frame(samp2(pseudo, 31, 23, "Endo")@assays$ALRA$data)
+srt <- data.frame(samp2(pseudo, 125, 23, "Sertoli")@assays$ALRA$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/ALRA/neonate_h_120/nh120_ALRA_SRT50.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 25% Sertoli cells 252 cells
+lg <- data.frame(samp2(pseudo, 51, 23, "Leydig")@assays$ALRA$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$ALRA$data)
+ptm <- data.frame(samp2(pseudo, 51, 23, "PTM")@assays$ALRA$data)
+endo <- data.frame(samp2(pseudo, 51, 23, "Endo")@assays$ALRA$data)
+srt <- data.frame(samp2(pseudo, 63, 23, "Sertoli")@assays$ALRA$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/ALRA/neonate_h_120/nh120_ALRA_SRT25.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+#5 10% Sertoli cells
+lg <- data.frame(samp2(pseudo, 63, 23, "Leydig")@assays$ALRA$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$ALRA$data)
+ptm <- data.frame(samp2(pseudo, 63, 23, "PTM")@assays$ALRA$data)
+endo <- data.frame(samp2(pseudo, 63, 23, "Endo")@assays$ALRA$data)
+srt <- data.frame(samp2(pseudo, 25, 23, "Sertoli")@assays$ALRA$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/ALRA/neonate_h_120/nh120_ALRA_SRT10.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+### create the df_samp ALRA object
+
+ref_columns <- colnames(df_samp)
+
+ALRA_ref <- hn120_ALRA[,ref_columns]
+
+df_samp[["ALRA"]] <- CreateAssayObject(counts = ALRA_ref)
+
+### MAKE CELL REFERENCE
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.frame(GetAssayData(df_samp, assay = "ALRA"))
+b$genes <- rownames(b)
+#sum(duplicated(b$genes))
+
+
+human_to_rat <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Human.rds")
+# Keep only the Gene Names
+human_to_rat <- human_to_rat[,c("Human_GRCh38_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(human_to_rat) <- c("human","rat")
+human_to_rat <- human_to_rat %>% distinct()
+
+b <- left_join(b,human_to_rat, by = c('genes' = 'human')) %>% column_to_rownames(., var="rat") %>% select(-genes)
+
+
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "~/OneDrive - UW/data for deconv/Testis_cellRefs/h_n_120_ALRA.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+```
+
+Neonate Human 120 SAVER Psuedobulks + Ref
+```{r adult 112 pbs}
+
+hi120_svr <- readRDS("~/OneDrive - UW/data for deconv/Data matrices (C)/Testis/saver/hi120_saver_cpm_SAVERoutput.rds")
+
+
+hi120_svr <- hi120_svr[[1]]
+
+
+svr_pseudo <- hi120_svr[,cells_for_pseudo]
+
+pseudo <- h_infant_120[, cells_for_pseudo]
+pseudo[["svr"]] <- CreateAssayObject(counts = svr_pseudo)
+
+
+table(pseudo$celltype)
+
+# Sertoli     PTM    Endo  Leydig    Germ  Immune 
+#    620     105     285      76      36       0 
+
+
+#We will be making 5 pseudobulks total with 500 cells total - refer to code for ground truth values of cell type proportions
+
+
+#1 90% Sertoli cells (250 cells)
+lg <- data.frame(samp2(pseudo, 6, 23, "Leydig")@assays$svr$data)
+germ <- data.frame(samp2(pseudo, 7, 23, "Germ")@assays$svr$data)
+ptm <- data.frame(samp2(pseudo, 6, 23, "PTM")@assays$svr$data)
+endo <- data.frame(samp2(pseudo, 6, 23, "Endo")@assays$svr$data)
+srt <- data.frame(samp2(pseudo, 225, 23, "Sertoli")@assays$svr$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file = "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/SAVER/neonate_h_120/H_I-120_SAVER_SRT90.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 75% Sertoli cells (252 cells)
+lg <- data.frame(samp2(pseudo, 16, 23, "Leydig")@assays$svr$data)
+germ <- data.frame(samp2(pseudo, 16, 23, "Germ")@assays$svr$data)
+ptm <- data.frame(samp2(pseudo, 16, 23, "PTM")@assays$svr$data)
+endo <- data.frame(samp2(pseudo, 15, 23, "Endo")@assays$svr$data)
+srt <- data.frame(samp2(pseudo, 189, 23, "Sertoli")@assays$svr$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/SAVER/neonate_h_120/H_I-120_SAVER_SRT75.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 50% Sertoli cells
+lg <- data.frame(samp2(pseudo, 31, 23, "Leydig")@assays$svr$data)
+germ <- data.frame(samp2(pseudo, 32, 23, "Germ")@assays$svr$data)
+ptm <- data.frame(samp2(pseudo, 31, 23, "PTM")@assays$svr$data)
+endo <- data.frame(samp2(pseudo, 31, 23, "Endo")@assays$svr$data)
+srt <- data.frame(samp2(pseudo, 125, 23, "Sertoli")@assays$svr$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/SAVER/neonate_h_120/H_I-120_SAVER_SRT50.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 25% Sertoli cells 252 cells
+lg <- data.frame(samp2(pseudo, 51, 23, "Leydig")@assays$svr$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$svr$data)
+ptm <- data.frame(samp2(pseudo, 51, 23, "PTM")@assays$svr$data)
+endo <- data.frame(samp2(pseudo, 51, 23, "Endo")@assays$svr$data)
+srt <- data.frame(samp2(pseudo, 63, 23, "Sertoli")@assays$svr$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/SAVER/neonate_h_120/H_I-120_SAVER_SRT25.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+#5 10% Sertoli cells
+lg <- data.frame(samp2(pseudo, 63, 23, "Leydig")@assays$svr$data)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$svr$data)
+ptm <- data.frame(samp2(pseudo, 63, 23, "PTM")@assays$svr$data)
+endo <- data.frame(samp2(pseudo, 63, 23, "Endo")@assays$svr$data)
+srt <- data.frame(samp2(pseudo, 25, 23, "Sertoli")@assays$svr$data)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/SAVER/neonate_h_120/H_I-120_SAVER_SRT10.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+### create the df_samp SAVER object
+
+ref_columns <- colnames(df_samp)
+
+SVRref <- hi120_svr[,ref_columns]
+
+df_samp[["svr"]] <- CreateAssayObject(counts = SVRref)
+
+### MAKE CELL REFERENCE
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.frame(GetAssayData(df_samp, assay = "svr"))
+b$genes <- rownames(b)
+#sum(duplicated(b$genes))
+
+
+human_to_rat <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Human.rds")
+# Keep only the Gene Names
+human_to_rat <- human_to_rat[,c("Human_GRCh38_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(human_to_rat) <- c("human","rat")
+human_to_rat <- human_to_rat %>% distinct()
+
+b <- left_join(b,human_to_rat, by = c('genes' = 'human')) %>% column_to_rownames(., var="rat") %>% select(-genes)
+
+
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "~/OneDrive - UW/data for deconv/Testis_cellRefs/h_i_120_SVR.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+```
+
+
+Neonate human 120 MAGIC Psuedobulks + Ref
+```{r infant 120 pbs}
+
+
+magic_hi120 <- read_csv("~/OneDrive - UW/data for deconv/Data matrices (C)/Testis/magic/hi120_MAGIC_matrix.csv")%>% t()
+colnames(magic_hi120) <- magic_hi120[1,]
+magic_hi120 <- magic_hi120[-1,]
+
+
+mgc_pseudo <- data.frame(magic_hi120[,cells_for_pseudo])
+
+pseudo <- h_infant_120[, cells_for_pseudo]
+pseudo[["magic"]] <- CreateAssayObject(counts = mgc_pseudo)
+
+
+#table(pseudo$celltype)
+
+#      Leydig      cnd_spm        d_spg        spmtd         Endo          PTM         SSCs meiosis_spcs       Immune 
+#         479         2404          288          970          202          154          141          559          194 
+#     Sertoli 
+#          49 
+
+
+#We will be making 5 pseudobulks total with 500 cells total - refer to code for ground truth values of cell type proportions
+
+
+
+#1 90% Sertoli cells (250 cells)
+lg <- data.frame(samp2(pseudo, 6, 23, "Leydig")@assays$magic$counts)
+germ <- data.frame(samp2(pseudo, 7, 23, "Germ")@assays$magic$counts)
+ptm <- data.frame(samp2(pseudo, 6, 23, "PTM")@assays$magic$counts)
+endo <- data.frame(samp2(pseudo, 6, 23, "Endo")@assays$magic$counts)
+srt <- data.frame(samp2(pseudo, 225, 23, "Sertoli")@assays$magic$counts)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file = "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/MAGIC/neonate_h_120/H_I-120_MAGIC_SRT90.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 75% Sertoli cells (252 cells)
+lg <- data.frame(samp2(pseudo, 16, 23, "Leydig")@assays$magic$counts)
+germ <- data.frame(samp2(pseudo, 16, 23, "Germ")@assays$magic$counts)
+ptm <- data.frame(samp2(pseudo, 16, 23, "PTM")@assays$magic$counts)
+endo <- data.frame(samp2(pseudo, 15, 23, "Endo")@assays$magic$counts)
+srt <- data.frame(samp2(pseudo, 189, 23, "Sertoli")@assays$magic$counts)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/MAGIC/neonate_h_120/H_I-120_MAGIC_SRT75.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 50% Sertoli cells
+lg <- data.frame(samp2(pseudo, 31, 23, "Leydig")@assays$magic$counts)
+germ <- data.frame(samp2(pseudo, 32, 23, "Germ")@assays$magic$counts)
+ptm <- data.frame(samp2(pseudo, 31, 23, "PTM")@assays$magic$counts)
+endo <- data.frame(samp2(pseudo, 31, 23, "Endo")@assays$magic$counts)
+srt <- data.frame(samp2(pseudo, 125, 23, "Sertoli")@assays$magic$counts)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/MAGIC/neonate_h_120/H_I-120_MAGIC_SRT50.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+#2 25% Sertoli cells 252 cells
+lg <- data.frame(samp2(pseudo, 51, 23, "Leydig")@assays$magic$counts)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$magic$counts)
+ptm <- data.frame(samp2(pseudo, 51, 23, "PTM")@assays$magic$counts)
+endo <- data.frame(samp2(pseudo, 51, 23, "Endo")@assays$magic$counts)
+srt <- data.frame(samp2(pseudo, 63, 23, "Sertoli")@assays$magic$counts)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/MAGIC/neonate_h_120/H_I-120_MAGIC_SRT25.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+#5 10% Sertoli cells
+lg <- data.frame(samp2(pseudo, 63, 23, "Leydig")@assays$magic$counts)
+germ <- data.frame(samp2(pseudo, 36, 23, "Germ")@assays$magic$counts)
+ptm <- data.frame(samp2(pseudo, 63, 23, "PTM")@assays$magic$counts)
+endo <- data.frame(samp2(pseudo, 63, 23, "Endo")@assays$magic$counts)
+srt <- data.frame(samp2(pseudo, 25, 23, "Sertoli")@assays$magic$counts)
+
+pseudobulk <- cbind(lg,germ,ptm,endo,srt) %>%
+  rowMeans() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+write.table(pseudobulk, file =  "~/OneDrive - UW/data for deconv/pseudobulks (E)/Testis/MAGIC/neonate_h_120/H_I-120_MAGIC_SRT10.txt", sep = "\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+### create the df_samp SAVER object
+
+ref_columns <- colnames(df_samp)
+
+magic_ref <- magic_hi120[,ref_columns]
+
+df_samp[["magic"]] <- CreateAssayObject(counts = magic_ref)
+
+### MAKE CELL REFERENCE
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.frame(GetAssayData(df_samp, assay = "magic"))
+b$genes <- rownames(b)
+#sum(duplicated(b$genes))
+
+
+human_to_rat <- readRDS("~/OneDrive - UW/data for deconv/public data (B)/Testis/Rat_to_Human.rds")
+# Keep only the Gene Names
+human_to_rat <- human_to_rat[,c("Human_GRCh38_GeneSymbol","Rat_mRatBN7.2_GeneSymbol")]
+colnames(human_to_rat) <- c("human","rat")
+human_to_rat <- human_to_rat %>% distinct()
+
+b <- left_join(b,human_to_rat, by = c('genes' = 'human')) %>% column_to_rownames(., var="rat") %>% select(-genes)
+
+
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "~/OneDrive - UW/data for deconv/Testis_cellRefs/h_i_120_MAGIC.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+```
+

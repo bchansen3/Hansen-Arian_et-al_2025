@@ -1,0 +1,137 @@
+---
+title: "Enterocyte MDS"
+author: "BH"
+date: "2025-05-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, ggrepel, magrittr,ggpubr, ggforce)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+
+Load the cell referneces
+```{r sigs}
+
+file_list <- list.files(path = "~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/Gut_cellRefs", pattern = "*.txt", full.names = TRUE)
+
+df_list <- list()
+
+for (file in file_list) {
+  df <- read.delim(file, header = FALSE)
+    rownames(df) <- df$V1
+  df <- df[, -1]
+  colnames(df) <- df[1,]
+  df <- df[, grepl("enterocyte", names(df), ignore.case = TRUE)]
+  df <- df[-1,]
+  df_numeric <- as.data.frame(lapply(df, as.numeric))
+  row_means <- rowMeans(df_numeric, na.rm = TRUE)
+  sample_name <- tools::file_path_sans_ext(basename(file))
+  df_out <- data.frame(row_means)
+  colnames(df_out) <- sample_name
+  rownames(df_out) <- rownames(df)
+  df_list[[sample_name]] <- df_out
+}
+
+common_rownames <- Reduce(intersect, lapply(df_list, rownames))
+
+df_list_common <- lapply(df_list, function(df) {df[common_rownames, , drop = FALSE]})
+
+combined_table_ent <- do.call(cbind, df_list_common)%>%rename_with(~ paste0(., "_ENT"))%>%rownames_to_column("rowname")
+
+
+df_list <- list()
+
+for (file in file_list) {
+  df <- read.delim(file, header = FALSE)
+  rownames(df) <- df$V1
+  df <- df[, -1]
+  colnames(df) <- df[1,]
+  df <- df[, grepl("goblet", names(df), ignore.case = TRUE)]
+  df <- df[-1,]
+  df_numeric <- as.data.frame(lapply(df, as.numeric))
+  row_means <- rowMeans(df_numeric, na.rm = TRUE)
+  sample_name <- tools::file_path_sans_ext(basename(file))
+  df_out <- data.frame(row_means)
+  colnames(df_out) <- sample_name
+  rownames(df_out) <- rownames(df)
+  df_list[[sample_name]] <- df_out
+}
+
+common_rownames <- Reduce(intersect, lapply(df_list, rownames))
+
+df_list_common <- lapply(df_list, function(df) {df[common_rownames, , drop = FALSE]})
+
+combined_table_gob <- do.call(cbind, df_list_common) %>%rename_with(~ paste0(., "_GOB"))%>%rownames_to_column("rowname")
+
+
+both <- inner_join(combined_table_ent, combined_table_gob, by = "rowname")%>%column_to_rownames("rowname")
+
+
+
+
+```
+
+```{r list}
+
+# Load required packages
+
+# Compute MDS
+mds <- both %>%
+  t() %>%
+  dist() %>%          
+  cmdscale() %>%
+  as_tibble()
+colnames(mds) <- c("Dimension 1", "Dimension 2")
+mds$ref <- colnames(both)
+
+
+
+mds <- mds %>%
+  mutate(
+    method = word(ref, 2, sep = "_"))%>%
+  mutate(title = case_when(
+    str_detect(ref, "1") ~ "Gut Cell Atlas",
+    str_detect(ref, "2") ~ "GSE185224",
+    str_detect(ref, "3") ~ "GSE201859"),
+    `cell type` = case_when(
+    str_detect(ref, "GOB") ~ "Goblet",
+    str_detect(ref, "ENT") ~ "Enterocyte"),
+    group_id = paste(title, `cell type`, sep = "_"))
+)
+
+
+# Plot MDS
+
+label_data <- mds %>%
+  group_by(title,`cell type`) %>%
+  slice(1) %>% 
+  ungroup()
+
+# Base scatter plot
+mds_test <- ggscatter(mds, x = "Dimension 1", y = "Dimension 2", 
+                      color = "cell type",
+                      palette = "d3",
+                      size = 3 ,
+                      shape = 'method') +
+  ggforce::geom_mark_ellipse(aes(x = `Dimension 1`, y = `Dimension 2`, group = group_id, label = NULL), expand = unit(3, "mm"), linetype = "dashed", color = "black", alpha = 0.5,fill = NA) +
+  geom_text_repel(data = label_data, aes(label = title), size = 5, point.padding = 1.6, box.padding = 1.4, segment.color = NA,force = 2,family = "Myriad Pro") +
+  theme_few(15, base_family = "Myriad Pro") +
+  coord_cartesian(expand = TRUE)+
+  theme(legend.position = "right") 
+  #guides(color = "none", fill = 'none')
+mds_test
+
+#ggsave("~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/mds_gut.png",mds_test, width = 9, height = 5, units = "in")
+
+```

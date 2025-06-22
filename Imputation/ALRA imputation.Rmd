@@ -1,0 +1,126 @@
+---
+title: "sc ALRA Imputation"
+author: "Chris Arian"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tibble, tidyr, stringr,readxl, ggplot2,ggsci, ggthemes, NormExpression, SoupX, scuttle, Seurat, scran, SeuratDisk, devtools, ggridges, patchwork)
+
+#ALRA download
+devtools::install_github("KlugerLab/ALRA")
+
+```
+
+
+
+```{r ALRA Paper 1}
+df1 <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/chris_df.rds")
+
+df1_matrix <- t(as.matrix(GetAssayData(object = df1, layer = "data")))
+
+df1_alra <- ALRA::alra(df1_matrix)
+
+#Output:
+"Read matrix with 16613 cells and 21695 genes
+Chose k=46
+Getting nonzeros
+Randomized SVD
+Find the 0.001000 quantile of each gene
+Sweep
+Scaling all except for 0 columns
+0.00% of the values became negative in the scaling process and were set to zero
+The matrix went from 7.81% nonzero to 38.20% nonzero"
+
+#Save ALRA data
+saveRDS(df1_alra, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/Paper1_ALRA_data.rds")
+
+#df1_alra <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/Paper1_ALRA_data.rds")
+
+#Pull relevant data
+df1_alra_df <- t(df1_alra[[3]])
+
+#add back cell IDs
+colnames(df1_alra_df) <- colnames(df1)
+
+#Add back into seurat object
+df1[["ALRA"]] <- CreateAssayObject(counts = df1_alra_df)
+
+#Save updated seurat
+saveRDS(df1, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/Paper1_chris_df_withALRA.rds")
+
+
+```
+
+```{r ALRA paper 2}
+
+df1 <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/chris_df2.rds")
+
+df1_matrix <- t(as.matrix(GetAssayData(object = df1, layer = "data")))
+
+df1_alra <- ALRA::alra(df1_matrix)
+
+#Output: 
+"Read matrix with 19159 cells and 36601 genes
+Chose k=47
+Getting nonzeros
+Randomized SVD
+Find the 0.001000 quantile of each gene
+Sweep
+Scaling all except for 10910 columns
+0.00% of the values became negative in the scaling process and were set to zero
+The matrix went from 7.77% nonzero to 31.06% nonzero"
+
+saveRDS(df1_alra, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/Paper2_alra_matrix.rds")
+
+#Pull relevant data
+df1_alra_df <- t(df1_alra[[3]])
+
+#Memory saver
+rm(df1_alra, df1_matrix)
+gc()
+
+#add back cell IDs
+colnames(df1_alra_df) <- colnames(df1)
+
+#Add back into seurat object
+df1[["ALRA"]] <- CreateAssayObject(counts = df1_alra_df)
+
+saveRDS(df1, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/Paper2_chris_df_withALRA.rds")
+```
+
+
+```{r paper 3}
+
+df1 <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/Paper3_df_CA_Nonimputed.rds")
+
+df1_matrix <- t(as.matrix(GetAssayData(object = df1, layer = "data")))
+
+df1_alra <- ALRA::alra(df1_matrix)
+
+saveRDS(df1_alra, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/Paper3_alra_matrix.rds")
+
+#Pull relevant data
+df1_alra_df <- t(df1_alra[[3]])
+
+#Memory saver
+rm(df1_alra, df1_matrix)
+gc()
+
+#add back cell IDs
+colnames(df1_alra_df) <- colnames(df1)
+
+#Add back into seurat object
+df1[["ALRA"]] <- CreateAssayObject(counts = df1_alra_df)
+
+saveRDS(df1, file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/Paper3_chris_df_withALRA.rds")
+```
+

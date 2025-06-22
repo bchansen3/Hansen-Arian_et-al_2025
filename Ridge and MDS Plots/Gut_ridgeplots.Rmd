@@ -1,0 +1,137 @@
+---
+title: "Gut_Deconv_ridges"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, janitor, ggridges, purrr, Seurat)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+Load the merged files
+```{r load cell refs}
+### Make RIDGE plots for each gene
+
+# need to load in each reference
+
+fp <- ("~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/Gut_cellRefs")
+files <- list.files(path = fp, pattern = "*.txt", full.names = TRUE, recursive=FALSE)
+
+gene_df <- list()
+
+for (file in files) {
+  
+  basename_file <- basename(file)
+  method_value <- sub(".*_(ALRA|SAVER|MAGIC|NoImputation)_.*", "\\1", basename_file)
+
+  ref <- str_remove(basename_file, paste0("_", method_value, "\\.txt$"))
+  
+  df <- read.delim(file, header = FALSE) %>%
+  t() %>%
+  row_to_names(row_number = 1) %>%
+  as.data.frame() %>%
+  select(ALPI, ANPEP, MUC2, FCGBP, LGR5, clusterID) %>%
+  mutate(
+    method = method_value,
+    ref = ref,
+    type = clusterID,  
+    across(c(ALPI, ANPEP, MUC2, FCGBP, LGR5), as.numeric),  
+    across(c(ALPI, ANPEP, MUC2, FCGBP, LGR5), ~ log2(. + 1)))
+
+  gene_df[[length(gene_df) + 1]] <- df
+}
+
+gene_plots <- bind_rows(gene_df)
+
+gene_plots <- gene_plots%>%   mutate(method = recode(method, "NoImputation" = "No Imp."))
+
+
+gene_plots$method <- factor(gene_plots$method, levels = c("No Imp.", "ALRA", "SAVER", "MAGIC"))
+
+
+
+table(gene_plots$method)
+
+```
+
+
+
+
+```{r infinity checks, eval=FALSE, include=FALSE}
+gut_inf <- gene_plots%>% filter(apply(., 1, function(row) any(grepl("Inf", row))))
+
+table(gut_inf$method)
+## 
+
+paper1_df_nonimputed <- readRDS("~/OneDrive - UW/data for deconv/Data matrices (C)/Gut/Paper 1_cell of the human intestinal tract mapped across space and time/paper1_df_nonimputed.rds")
+
+df1_nonimputed <- as.data.frame(readRDS("~/OneDrive - UW/data for deconv/Data matrices (C)/Gut/Paper 1_cell of the human intestinal tract mapped across space and time/df1_dsmatrix.rds"))
+
+colnames(df1_nonimputed)
+
+
+
+magic_gut1 <- read.delim(files[2], header=FALSE)
+# luckily this still has cell names
+names <- magic_gut1[c(1:2),]%>%t()%>% as.data.frame()
+colnames(names) <- c("cellID", "clusterID")
+names <- names[-1,]
+
+gut1 <- readRDS("~/OneDrive - UW/data for deconv/CPM SEURAT OBJECTS/DS_paper1_cpm.rds")
+gut1_data <- LayerData(gut1, assay = "RNA", layer = "data")%>%t() %>% as.data.frame%>%  rownames_to_column("cellID") %>% inner_join(names, join_by(cellID))%>% relocate(clusterID) %>% select (-cellID)%>%t() %>% as.data.frame()
+
+
+write.table(gut1_data, "~/OneDrive - UW/data for deconv/Signature matrices impute+no impute (D)/Gut/gut_refs_ridges/Paper1_noinf_NoImputation.txt", sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE)
+
+
+
+```
+
+
+
+```{r plotting}
+
+input <- gene_plots %>% filter(type == 'Enterocyte' | type == 'Goblet cell' | type == 'Proliferative cell' ) %>% mutate(title = case_when(
+    str_detect(ref, "1") ~ "Gut Cell Atlas",
+    str_detect(ref, "2") ~ "GSE185224",
+    str_detect(ref, "3") ~ "GSE201859",
+    TRUE ~ NA_character_
+  ))
+
+genelist <- c('ALPI', 'ANPEP', 'MUC2', 'FCGBP', 'LGR5')
+
+for (gene in genelist) {
+  
+  ridge <- ggplot(data=input, aes(x = get(gene), y = type, fill = title)) +
+    geom_density_ridges(alpha = 0.65, scale = 1.1) +
+    scale_y_discrete(expand = expansion(add = c(0.05, 1.2))) +
+    ylab(gene) +  
+    xlab("logCPM") +
+    coord_cartesian(clip = "off") +
+    theme_bw(28, base_family = "Myriad Pro") +
+    scale_fill_npg()+
+    theme(legend.position = "bottom") +
+    theme(axis.title.y=element_text(face="italic"), base_family = "Myriad Pro")+
+    theme(legend.title=element_blank())+
+    facet_wrap(~method, nrow = 1)
+
+ output_file <- paste0("~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_ridges/gut_", gene, "_ridge.png")
+ ggsave(ridge, dpi = 600, filename = output_file, width = 14, height = 7)
+  
+}
+
+
+```
+
+

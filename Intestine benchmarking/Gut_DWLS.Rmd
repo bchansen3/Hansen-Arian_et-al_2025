@@ -1,0 +1,529 @@
+---
+title: "Gut-crosscompare_DWLS"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, quadprog)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+load the PBs
+```{r load PBs}
+
+noIMP_paper1 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper1_NoImp.txt') %>% column_to_rownames('GENEID')
+noIMP_paper2 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/ALLpseudos_Paper2_NoImp.txt')%>% column_to_rownames('GENEID')
+noIMP_paper3 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper3_NoImp.txt')%>% column_to_rownames('SYMBOL')
+
+        shared_rows <- Reduce(intersect, list(rownames(noIMP_paper1), rownames(noIMP_paper2), rownames(noIMP_paper3)))
+        noIMP_paper1 <- noIMP_paper1[shared_rows,]
+        noIMP_paper2 <- noIMP_paper2[shared_rows,]
+        noIMP_paper3 <- noIMP_paper3[shared_rows,]
+        
+        colnames(noIMP_paper1) <- paste0(colnames(noIMP_paper1), "_paper1")
+        colnames(noIMP_paper2) <- paste0(colnames(noIMP_paper2), "_paper2")
+        colnames(noIMP_paper3) <- paste0(colnames(noIMP_paper3), "_paper3")
+        
+        all_noimp <- cbind(noIMP_paper1,noIMP_paper2,noIMP_paper3)
+
+
+
+alra_paper1 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper1_ALRA.txt')%>% column_to_rownames('GENEID')
+alra_paper2 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/ALLpseudos_Paper2_ALRA.txt')%>% column_to_rownames('GENEID')
+alra_paper3 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper3_ALRA.txt')%>% column_to_rownames('SYMBOL')
+
+        shared_rows <- Reduce(intersect, list(rownames(alra_paper1), rownames(alra_paper2), rownames(alra_paper3)))
+        alra_paper1 <- alra_paper1[shared_rows,]
+        alra_paper2 <- alra_paper2[shared_rows,]
+        alra_paper3 <- alra_paper3[shared_rows,]
+        
+        colnames(alra_paper1) <- paste0(colnames(alra_paper1), "_paper1")
+        colnames(alra_paper2) <- paste0(colnames(alra_paper2), "_paper2")
+        colnames(alra_paper3) <- paste0(colnames(alra_paper3), "_paper3")
+        
+        all_alra <- cbind(alra_paper1,alra_paper2,alra_paper3)
+
+saver_paper1 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper1_SAVER.txt')%>% column_to_rownames('GENEID')
+saver_paper2 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/ALLpseudos_Paper2_SAVER.txt')%>% column_to_rownames('GENEID')
+saver_paper3 <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/Allpseudos_Paper3_SAVER.txt')%>% column_to_rownames('hgnc_symbol')
+
+        shared_rows <- Reduce(intersect, list(rownames(saver_paper1), rownames(saver_paper2), rownames(saver_paper3)))
+        saver_paper1 <- saver_paper1[shared_rows,]
+        saver_paper2 <- saver_paper2[shared_rows,]
+        saver_paper3 <- saver_paper3[shared_rows,]
+        
+        colnames(saver_paper1) <- paste0(colnames(saver_paper1), "_paper1")
+        colnames(saver_paper2) <- paste0(colnames(saver_paper2), "_paper2")
+        colnames(saver_paper3) <- paste0(colnames(saver_paper3), "_paper3")
+        
+        all_saver <- cbind(saver_paper1,saver_paper2,saver_paper3)
+
+
+
+all_magics <- read.delim('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/gut_pseudobulks/updatedMAGICs_sqrt/all_magicPBs_cpm.txt')%>% column_to_rownames('GENEID')%>%
+  rename_with(~ str_replace(., "^(df\\d+)_(pseudo\\d+)$", "\\2_\\1")) %>%  # Reorder
+  rename_with(~ str_replace(., "df", "Paper"))
+
+
+unlist_func <- function(list) {bind_rows(lapply(names(list), function(name) {
+    df <- list[[name]]
+    df$source <- name
+    df <- df %>% select(-any_of(c("Other", "Best4", "EEC", "Tuftcell")))
+
+  refs <- unlist(strsplit(name, "_"))  
+  df %>%
+    mutate(#pb = sapply(strsplit(refs, "_"), `[`, 1),
+           #pbref = sapply(strsplit(refs, "_"), `[`, 2),
+          source = name,
+           imp = refs[1],
+           sigref = refs[2])}))}
+
+```
+
+
+Load the signatures matrices
+```{r sigs}
+#important to use the corrected folder
+
+swd <- list.dirs("~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/GUT/Gut_cellRefs/", full.names = TRUE)
+
+# Initialize an empty list to hold sublists for each type
+all_matrices <- list()
+
+type <- c("NoImputation", "ALRA", "SAVER", "MAGIC")
+
+for (dir in swd) {
+
+    for (t in type) {
+        if (grepl(t, dir)) {
+        
+            if (is.null(all_matrices[[t]])) {
+                all_matrices[[t]] <- list() }
+            
+            rds_files <- list.files(dir, pattern = "Sig.rds", full.names = TRUE, recursive = TRUE)
+            
+            for (rds_file in rds_files) {
+            
+                data <- readRDS(rds_file)
+                colnames(data) <- gsub("cell", "", colnames(data), ignore.case = TRUE)
+                file_name_part <- basename(dirname(rds_file))
+                new_name <- paste0(t, "_", file_name_part, "_sig")
+                all_matrices[[t]][[new_name]] <- data   }} }}
+
+```
+
+```{r svr, include=FALSE}
+
+
+SVR <- data.frame()
+
+
+
+runSVRall <- function(df_in, sig_matrix_in) {
+  
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  df <- df_in[rows, ]
+  sig_matrix_in <- sig_matrix_in[rows, ]
+
+  
+  samples <- colnames(df)
+  
+  for (i in samples) {
+    name <- i
+    dataBulk <- as.numeric(df[, i])
+    Signature <- as.matrix(sig_matrix_in)
+
+    solSVR <- solveSVR(Signature, dataBulk)
+    
+
+    SVR <- rbind(SVR, solSVR)
+  }
+
+  colnames(SVR) <- c(colnames(Signature))
+  SVR$method <- 'SVR'
+  
+
+  out <- rbind(SVR)
+  out$ref <- samples
+
+  return(out)
+}
+
+alra_SVR <- unlist_func(lapply(all_matrices$ALRA, runSVRall, df_in = all_alra))
+noIMP_SVR <- unlist_func(lapply(all_matrices$NoImputation, runSVRall, df_in = all_noimp))
+saver_SVR <- unlist_func(lapply(all_matrices$SAVER, runSVRall, df_in = all_saver))
+magic_SVR <- unlist_func(lapply(all_matrices$MAGIC, runSVRall, df_in = all_magics))
+
+SVR_gut <- rbind(alra_SVR,noIMP_SVR,saver_SVR,magic_SVR)%>% mutate(method='SVR')
+
+table(SVR_gut$sigref,SVR_gut$imp)
+```
+
+
+```{r ols, include=FALSE}
+
+runOLSall <- function(df_in, sig_matrix_in) {
+ rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  df <- df_in[rows, ]
+  sig_matrix <- sig_matrix_in[rows, ]
+  #sig_matrix <- sig_matrix[, !(colnames(sig_matrix) %in% c("EEC", "Tuft"))]
+
+  samples <- colnames(df)
+  results_matrix <- matrix(NA, nrow = length(samples), ncol = ncol(sig_matrix))
+  rownames(results_matrix) <- samples
+  colnames(results_matrix) <- colnames(sig_matrix)
+
+  
+  
+  solveOLS <- function(S, B) {
+    D <- t(S) %*% S
+    d <- t(S) %*% B
+    A <- cbind(diag(dim(S)[2]))
+    bzero <- rep(-0.25, dim(S)[2])
+    solution<-solve.QP(D,d,A,bzero)$solution
+    names(solution)<-colnames(S)
+    print(round(solution/sum(solution),5))
+   return(solution/sum(solution))
+  }
+
+  for (i in seq_along(samples)) {
+    sample_name <- samples[i]
+    B <- as.numeric(df[, sample_name])
+    S <- as.matrix(sig_matrix)
+
+    # actual deconv
+    result <- solveOLS(S, B)
+    results_matrix[sample_name, ] <- result
+  }
+  
+  results_df <- as.data.frame(results_matrix)
+  return(results_df)
+}
+
+
+
+alra_OLS <- unlist_func(lapply(all_matrices$ALRA, runOLSall, df_in = all_alra))
+noIMP_OLS <- unlist_func(lapply(all_matrices$NoImputation, runOLSall, df_in = all_noimp))
+saver_OLS <- unlist_func(lapply(all_matrices$SAVER, runOLSall, df_in = all_saver))
+magic_OLS <- unlist_func(lapply(all_matrices$MAGIC, runOLSall, df_in = all_magics))
+
+
+
+ols_gut <- rbind(alra_OLS,noIMP_OLS,saver_OLS,magic_OLS)%>% mutate(method='ols')%>% rownames_to_column('names')%>% mutate(ref = str_remove(names, "\\.\\.\\..*")) %>% select(-names)
+
+table(ols_gut$sigref,ols_gut$imp)
+
+```
+
+
+
+```{r DWLS, include=FALSE}
+
+runDWLSall <- function(df_in, sig_matrix_in) {
+  rows <- intersect(rownames(sig_matrix_in), rownames(df_in))
+  df <- df_in[rows, ]
+  sig_matrix <- sig_matrix_in[rows, ]
+  #sig_matrix <- sig_matrix[, !(colnames(sig_matrix) %in% c("EEC", "Tuft"))]
+
+  samples <- colnames(df)
+  results_matrix <- matrix(NA, nrow = length(samples), ncol = ncol(sig_matrix))
+  rownames(results_matrix) <- samples
+  colnames(results_matrix) <- colnames(sig_matrix)
+
+  solveOLSInternal<-function(S,B){
+  D<-t(S)%*%S
+  d<-t(S)%*%B
+  A<-cbind(diag(dim(S)[2]))
+  bzero<-c(rep(-0.25,dim(S)[2]))
+  solution<-solve.QP(D,d,A,bzero)$solution
+  names(solution)<-colnames(S)
+  return(solution)
+}
+  #this is from DWLS github
+solveDampenedWLS<-function(S,B){
+
+  
+    solution<-solveOLSInternal(S,B)
+
+    iterations<-0
+  changes<-c()
+
+    j<-findDampeningConstant(S,B,solution)
+  change<-1
+  while(change>.01 & iterations<1000){
+    newsolution<-solveDampenedWLSj(S,B,solution,j)
+    #decrease step size for convergence
+    solutionAverage<-rowMeans(cbind(newsolution,matrix(solution,nrow = length(solution),ncol = 4)))
+    change<-norm(as.matrix(solutionAverage-solution))
+    solution<-solutionAverage
+    iterations<-iterations+1
+    changes<-c(changes,change)
+  }
+  print(round(solution/sum(solution),5))
+  return(solution/sum(solution))
+}
+
+
+  for (i in seq_along(samples)) {
+    sample_name <- samples[i]
+    B <- as.numeric(df[, sample_name])
+    S <- as.matrix(sig_matrix)
+
+#Actual deconv
+    result <- solveDampenedWLS(S, B)
+
+    # Store the result in the appropriate place
+    results_matrix[sample_name, ] <- result
+  }
+
+  # Convert the matrix to a data frame
+  results_df <- as.data.frame(results_matrix)
+  return(results_df)
+}
+
+
+
+alra_DWLS <- unlist_func(lapply(all_matrices$ALRA, runDWLSall, df_in = all_alra))
+noIMP_DWLS <- unlist_func(lapply(all_matrices$NoImputation, runDWLSall, df_in = all_noimp))
+saver_DWLS <- unlist_func(lapply(all_matrices$SAVER, runDWLSall, df_in = all_saver))
+magic_DWLS <- unlist_func(lapply(all_matrices$MAGIC, runDWLSall, df_in = all_magics))
+
+
+dwls_gut <- rbind(alra_DWLS,noIMP_DWLS,saver_DWLS,magic_DWLS)%>% mutate(method='dwls')%>%rownames_to_column('names')%>% mutate(ref = str_remove(names, "\\.\\.\\..*")) %>% select(-names)
+
+table(dwls_gut$sigref,dwls_gut$imp)
+
+```
+
+
+Combine the ols, dwls, and SVR objects
+```{r objects}
+
+gut_data_dwls <- rbind(dwls_gut,SVR_gut,ols_gut)%>% separate(ref, into = c("pseudo", "pb_paper"), sep = "_")%>%
+mutate(pseudo = case_when(
+    pseudo == "pseudo1" ~ 0.5,
+    pseudo == "pseudo2" ~ 0.1,
+    pseudo == "pseudo3" ~ 0.25,
+    pseudo == "pseudo4" ~ 0.75,
+    pseudo == "pseudo5" ~ 0.9,))%>% select(-source)
+
+## In this code pseudo 1 is 50% enterocytes, pseudo 2 is 10%, 3 is 25%, 4 is 75%, and 5 is 90%
+
+table(gut_data_dwls$pseudo,gut_data_dwls$method)
+
+```
+
+load in the data from the 'MuSIC_GUT_deconvolution.rmd' file
+
+```{r music file}
+
+gut_music_results <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/GUT/gut_music_results.rds')
+
+paper_1music <- as.data.frame(gut_music_results[[1]]$Est.prop.weighted) %>% rownames_to_column('names') %>% mutate(sigref = 'Paper1', method = "music")
+paper_2music <- as.data.frame(gut_music_results[[2]]$Est.prop.weighted)%>% rownames_to_column('names') %>% mutate(sigref = 'Paper2', method = "music")
+paper_3music <- as.data.frame(gut_music_results[[3]]$Est.prop.weighted)%>% rownames_to_column('names') %>% mutate(sigref = 'Paper3', method = "music")
+
+paper_1nnls <- as.data.frame(gut_music_results[[1]]$Est.prop.allgene)%>% rownames_to_column('names') %>% mutate(sigref = 'Paper1', method = "nnls")
+paper_2nnls <- as.data.frame(gut_music_results[[2]]$Est.prop.allgene)%>% rownames_to_column('names') %>% mutate(sigref = 'Paper2', method = "nnls")
+paper_3nnls <- as.data.frame(gut_music_results[[3]]$Est.prop.allgene)%>% rownames_to_column('names') %>% mutate(sigref = 'Paper3', method = "nnls")
+
+all_music_gut <- rbind(paper_1music,paper_2music,paper_3music,paper_1nnls,paper_2nnls,paper_3nnls)%>% separate(names, into = c("pseudo", "pb_paper"), sep = "_")%>%
+mutate(pseudo = case_when(
+    pseudo == "pseudo1" ~ 0.5,
+    pseudo == "pseudo2" ~ 0.1,
+    pseudo == "pseudo3" ~ 0.25,
+    pseudo == "pseudo4" ~ 0.75,
+    pseudo == "pseudo5" ~ 0.9,))%>% mutate(imp = "NoImputation") %>%select(-c(Other,EEC))%>% rename_with(~ str_remove(., " cell$"))
+
+table(all_music_gut$pseudo)
+
+# outputs are 
+# Est.prop.weighted: data.frame of MuSiC estimated proportions, subjects by cell types;
+# Est.prop.allgene: data.frame of NNLS estimated proportions, subjects by cell types
+
+
+all_gut_nonCB <- rbind(gut_data_dwls,all_music_gut)
+
+```
+
+add in the data from Cibersort
+```{r cibersort data}
+
+gut_all_cb <- read_excel("~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_cibersort_all_results.xlsx")%>% select(-EEC)
+
+all_gut <- rbind(all_gut_nonCB,gut_all_cb) %>%mutate(sigref = tolower(sigref), pb_paper = tolower(pb_paper)) %>% mutate(comp = if_else(sigref == pb_paper, "intra", "inter"))
+
+table(gut_all_cb$pseudo,gut_all_cb$sigref, gut_all_cb$imp)
+
+
+```
+
+
+Now we want to separate the inter- and intra- comparisons
+```{r filter sames}
+
+all_gut_sames <- filter(all_gut, comp =='intra')
+all_gut_inter <- filter(all_gut, comp =='inter')
+
+gut_results <- list(sames = all_gut_sames, inter = all_gut_inter)
+
+saveRDS(gut_results, "~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_results.rds")
+
+gut_results <-  readRDS("~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_results.rds")
+
+
+
+```
+
+
+
+plotting
+```{r sames plots}
+
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=gut_results$inter %>% filter(method == 'CIBERSORTx'), aes(x=pseudo, y=Enterocyte)) +
+  geom_point(aes(color=pb_paper),size=3, shape='diamond', alpha = 0.65) + 
+  #stat_summary(aes(color=pb_paper),fun = "mean", geom = "line", size = 2) +  
+  geom_abline(slope=1, linetype="dashed") +
+  #coord_fixed(ratio=1) +  
+  #scale_x_continuous(breaks=ticks, limits=c(0, 1)) +  
+  #scale_y_continuous(breaks=ticks, limits=c(-.5, 1)) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+    scale_fill_d3() +
+  scale_color_d3() +
+  theme_bw(base_size = 16, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  #labs(color = "Pseudobulk Source") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(method~imp, nrow=1, scales = 'free') 
+
+plots
+
+
+
+```
+
+plotting
+```{r inter plots}
+
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+plots <- ggplot(data=all_gut_inter, aes(x=pseudo, y=Enterocyte)) +
+  geom_point(aes(color=sigref),size=3, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 2) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks, limits=c(-0.5, 2)) +  
+  scale_y_continuous(breaks=ticks, limits=c(-0.5, 2)) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+    scale_fill_d3() +
+  scale_color_d3() +
+  theme_bw(base_size = 16, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(method~imp) 
+
+plots
+```
+
+
+```{r gut sames mape}
+
+abs_mape <- function(pred, actual) {
+  non_zero <- actual != 0
+  if (any(non_zero)) {
+    mean(abs((pred[non_zero] - actual[non_zero]) / abs(actual[non_zero])))
+  } else { NA}}
+
+
+mapes <-  all_gut_sames %>%  
+            group_by(method, imp) %>%
+            summarise(mape_value = mape(Enterocyte, pseudo)) %>%
+            mutate(percent = mape_value*100) %>%
+            ungroup()
+
+rmse <-  all_gut_sames %>%  
+            group_by(method, imp) %>%
+            summarise(rmse_value = rmse(Enterocyte, pseudo)) %>%
+            ungroup()
+
+
+
+mape_minmax <-  all_gut_sames %>% 
+ group_by(method, imp, sigref) %>%
+  summarise(
+    mape_value = mape(Enterocyte, pseudo)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(mape_value)*100,
+        max=max(mape_value)*100)
+
+rmse_minmax <-  all_gut_sames %>% 
+ group_by(method, imp, sigref) %>%
+  summarise(
+    rmse_value = rmse(Enterocyte, pseudo)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(rmse_value),
+        max=max(rmse_value))
+
+
+gut_sames_mapes_rmse <- list(mapes,mape_minmax,rmse,rmse_minmax)
+
+
+mapes <-  all_gut_inter %>%  
+            group_by(method, imp) %>%
+            summarise(mape_value = abs_mape(Enterocyte, pseudo)) %>%
+            mutate(percent = mape_value*100) %>%
+            ungroup()
+
+rmse <-  all_gut_inter %>%  
+            group_by(method, imp) %>%
+            summarise(rmse_value = rmse(Enterocyte, pseudo)) %>%
+            ungroup()
+
+
+
+mape_minmax <-  all_gut_inter %>% 
+ group_by(method, imp, sigref) %>%
+  summarise(
+    mape_value = abs_mape(Enterocyte, pseudo)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(mape_value)*100,
+        max=max(mape_value)*100)
+
+rmse_minmax <-  all_gut_inter %>% 
+ group_by(method, imp, sigref) %>%
+  summarise(
+    rmse_value = rmse(Enterocyte, pseudo)) %>%
+      ungroup()%>%
+    group_by(method, imp) %>%
+      summarise(
+        min=min(rmse_value),
+        max=max(rmse_value))
+
+gut_inter_mapes_rmse <- list(mapes,mape_minmax,rmse,rmse_minmax)
+
+gut_mapes_rmse <- list("intra" = gut_sames_mapes_rmse, "inter" =gut_inter_mapes_rmse)
+
+saveRDS(gut_mapes_rmse, '~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_mapes_rmse.rds')
+```

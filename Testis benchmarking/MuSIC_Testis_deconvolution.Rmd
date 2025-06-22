@@ -1,0 +1,252 @@
+---
+title: "MUSIC_deconv"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+We need the RAW count files for MuSIC:
+
+Tutorial here: https://xuranw.github.io/MuSiC/articles/MuSiC.html 
+
+```{r load packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, ggbreak, MuSiC, Seurat, Biobase, SingleCellExperiment)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+
+ctdir <- '~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/'
+
+```
+
+load in the bulk object (this is all merged)
+
+```{r bulk}
+
+bulkdata <- read_delim("~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/PBs/allPB_counts_combined.txt", col_names = T) %>% column_to_rownames("rat")
+
+bulkdata <- as.matrix(bulkdata)
+bulkm <- apply(bulkdata, 2, as.numeric)
+colnames(bulkm) <- colnames(bulkdata)
+rownames(bulkm) <- rownames(bulkdata)
+
+
+```
+
+H112 adult humna
+```{r h112 music}
+
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"h_a_112_COUNTS_Ref.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/h112_testis_cellIDs.rds')
+cellIDs$donor <- sub("\\..*", "", cellIDs$cellID)
+
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+h112_music <- music_prop(bulkm,sce,clusters = 'clusterID', samples = 'donor')
+
+
+```
+
+
+h120 neonate human
+```{r h120 music}
+
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"h_i_120_COUNTS_Ref.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/h120_testis_cellIDs.rds')
+cellIDs$donor <- substr(cellIDs$cellID, 1, 7)
+
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+h120_music <- music_prop(bulkm,sce,clusters = 'clusterID', samples = 'donor')
+
+
+```
+
+
+h124 neonate human
+```{r h120 music}
+
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"h_i_124_COUNTS_Ref.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/h124_testis_cellIDs.rds')
+cellIDs$donor <- substr(cellIDs$cellID, 1, 2)
+
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+h124_music <- music_prop(bulkm,sce,clusters = 'clusterID', samples = 'donor')
+
+
+```
+
+md2 neonate mouse
+```{r h120 music}
+library(stringr)
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"m_neo_d2_COUNTS_Ref.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/md2_testis_cellIDs.rds')
+cellIDs$donor <- str_sub(cellIDs$cellID, -1)
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+md2_music <- music_prop(bulkm,sce,clusters = 'clusterID', samples = 'donor')
+
+
+```
+
+
+md7 neonate mouse
+```{r h120 music}
+library(stringr)
+
+count_matrix <- as.matrix(read_delim(paste0(ctdir,"m_neo_d7_COUNTS_Ref.txt"), col_names = F))
+
+gene_ids <- count_matrix[-1, 1]
+
+cell_types <- as.character(unlist(count_matrix[1, -1]))
+
+count_matrix <- count_matrix[-1, -1]
+rownames(count_matrix) <- gene_ids
+colnames(count_matrix) <- paste0("cell_", seq_len(ncol(count_matrix)))
+numeric_matrix <- apply(count_matrix, 2, as.numeric)
+
+# Assign row and column names back to the matrix
+rownames(numeric_matrix) <- rownames(count_matrix)
+colnames(numeric_matrix) <- colnames(count_matrix)
+
+cellIDs <- readRDS('~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/md7_testis_cellIDs.rds')
+cellIDs$donor <- str_sub(cellIDs$cellID, -1)
+
+
+col_data <- DataFrame(cellIDs)
+
+
+
+rownames(col_data) <- colnames(numeric_matrix)
+
+sce <- SingleCellExperiment(assays = list(counts = numeric_matrix), colData = col_data)
+
+
+
+
+md7_music <- music_prop(bulkm,sce,clusters = 'clusterID', samples = 'donor')
+
+
+```
+
+
+make list of objects and save
+```{r list objects}
+
+music_results_testis <- list(
+
+saveRDS(music_results_testis, '~/OneDrive - UW/data for deconv/Paper revision materials/DATA/raw_counts/TESTIS/music_results_testis.rds')
+
+```

@@ -1,0 +1,437 @@
+---
+title: "gut_benchmark_plots"
+author: "BH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, quadprog, ggbreak)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+Load in the gut objects
+```{r objects}
+
+gut_results <- readRDS("~/OneDrive - UW/data for deconv/Paper revision materials/brad_updated_code/gut_results.rds")
+
+all_gut_sames <- gut_results$sames %>%
+  mutate(imp = if_else(imp %in% c("NoImputation", "Noimputation"), "No Imputation", imp), imp = factor(imp, levels = c("No Imputation", "ALRA", "MAGIC", "SAVER")))
+
+all_gut_inter <- gut_results$inter %>%
+  mutate(imp = if_else(imp %in% c("NoImputation", "Noimputation"), "No Imputation", imp), imp = factor(imp, levels = c("No Imputation", "ALRA", "MAGIC", "SAVER")))
+
+
+```
+
+#INTRA
+
+SAMES plotting - DWLS
+```{r dwls-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+dwls <- ggplot(data=all_gut_sames%>% filter(method== 'dwls'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks, limits=c(0, 1)) +  
+  scale_y_continuous(breaks=ticks, limits=c(0, 1)) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+
+
+dwls
+
+ggsave(dwls, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_dwls.png", width = 12, height=9, units = 'in', bg = 'white')
+
+```
+
+SAMES plotting - OLS
+```{r ols-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+plot_data <- all_gut_sames %>%
+  filter(method == 'ols') %>%
+  mutate(Enterocyte_plot = ifelse(Enterocyte > 1, 1, Enterocyte),
+    shape_flag = ifelse(Enterocyte > 1, "Capped", "Normal"))
+shape_map <- c("Normal" = 18, "Capped" = 4)
+
+
+ols <- ggplot(data = plot_data, aes(x = pseudo, y = Enterocyte_plot, color = sigref, shape = shape_flag)) +
+  geom_point(size=4, alpha = 0.65) + 
+ stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8, aes(group = sigref)) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+    scale_shape_manual(values = shape_map) +
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+ols
+
+ggsave(ols, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_ols.png", width = 12, height=9, units = 'in', bg = 'white')
+
+```
+
+SAMES plotting - SVR
+```{r SVR-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+svr <- ggplot(data=all_gut_sames%>% filter(method== 'SVR'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+   scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +  
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+svr
+
+ggsave(svr, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_SVR.png", width = 12, height=9, units = 'in', bg = 'white')
+
+```
+
+SAMES plotting - CB
+```{r CB-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+cb <- ggplot(data=all_gut_sames%>% filter(method== 'CIBERSORTx'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +   
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+cb
+
+ggsave(cb, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_CB.png", width = 12, height=9, units = 'in', bg = 'white')
+
+```
+
+SAMES plotting - nnls
+```{r nnls-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+nnls <- ggplot(data=all_gut_sames%>% filter(method== 'nnls'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+nnls
+
+ggsave(nnls, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_NNLS.png", width = 4, height=9, units = 'in', bg = 'white')
+
+```
+
+SAMES plotting - MUSIC
+```{r music-sames}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+music <- ggplot(data=all_gut_sames%>% filter(method== 'music'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+music
+
+ggsave(music, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_sames/gut-sames_music.png", width = 4, height=9, units = 'in', bg = 'white')
+
+```
+
+
+
+
+
+
+#INTER
+
+
+inter plotting - DWLS
+```{r dwls-inter}
+
+ticks <- c( 0.1,0.25,0.50,0.75,0.90)
+
+plot_data <- all_gut_inter %>%
+  filter(method == 'dwls') %>%
+  mutate(Enterocyte_plot = ifelse(Enterocyte > 1, 1, Enterocyte),
+    shape_flag = ifelse(Enterocyte > 1, "Capped", "Normal"))
+shape_map <- c("Normal" = 18, "Capped" = 4)
+
+
+dwls <- ggplot(data = plot_data, aes(x = pseudo, y = Enterocyte_plot, color = sigref, shape = shape_flag)) +
+  geom_point(size=4, alpha = 0.65) + 
+ stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8, aes(group = sigref)) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+    scale_shape_manual(values = shape_map) +  
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) + theme(panel.spacing = unit(1.5, "lines"))
+
+dwls
+
+ggsave(dwls, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_dwls.png", width = 15, height=9, units = 'in', bg = 'white')
+
+```
+
+
+
+inter plotting - OLS
+```{r ols-inter}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+plot_data <- all_gut_inter %>%
+  filter(method == 'ols') %>%
+  mutate(Enterocyte_plot = ifelse(Enterocyte > 1, 1, Enterocyte),
+    shape_flag = ifelse(Enterocyte > 1, "Capped", "Normal"))
+shape_map <- c("Normal" = 18, "Capped" = 4)
+
+ols <- ggplot(data = plot_data, aes(x = pseudo, y = Enterocyte_plot, color = sigref, shape = shape_flag)) +
+  geom_point(size=4, alpha = 0.65) + 
+ stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8, aes(group = sigref)) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+    scale_shape_manual(values = shape_map) +
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) + theme(panel.spacing = unit(1.5, "lines"))
+
+ols
+
+ggsave(ols, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_ols.png", width = 15, height=9, units = 'in', bg = 'white')
+
+```
+
+inter plotting - SVR
+```{r SVR-inter}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+plot_data <- all_gut_inter %>%
+  filter(method == 'SVR') %>%
+  mutate(Enterocyte_plot = ifelse(Enterocyte > 1, 1, Enterocyte),
+    shape_flag = ifelse(Enterocyte > 1, "Capped", "Normal"))
+shape_map <- c("Normal" = 18, "Capped" = 4)
+
+svr <- ggplot(data = plot_data, aes(x = pseudo, y = Enterocyte_plot, color = sigref, shape = shape_flag)) +
+  geom_point(size=4, alpha = 0.65) + 
+ stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8, aes(group = sigref)) +
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+    scale_shape_manual(values = shape_map) +
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) + theme(panel.spacing = unit(1.5, "lines"))
+
+svr
+
+ggsave(svr, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_SVR.png", width = 15, height=9, units = 'in', bg = 'white')
+
+```
+
+inter plotting - CB
+```{r CB-inter}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+cb <- ggplot(data=all_gut_inter%>% filter(method== 'CIBERSORTx'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +  
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) + theme(panel.spacing = unit(1.5, "lines"))
+
+cb
+
+ggsave(cb, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_CB.png", width = 15, height=9, units = 'in', bg = 'white')
+
+```
+
+inter plotting - nnls
+```{r nnls-inter}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+nnls <- ggplot(data=all_gut_inter%>% filter(method== 'nnls'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks, limits= c(0,1)) +  
+  scale_y_continuous(breaks=ticks, limits= c(0,1)) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +  
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+nnls
+
+ggsave(nnls, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_NNLS.png", width = 4, height=9, units = 'in', bg = 'white')
+
+```
+
+inter plotting - MUSIC
+```{r music-inter}
+
+ticks <- c(0.1,0.25,0.50,0.75,0.90)
+
+
+music <- ggplot(data=all_gut_inter%>% filter(method== 'music'), aes(x=pseudo, y=Enterocyte, color =sigref)) +
+  geom_point(size=4, shape='diamond', alpha = 0.65) + 
+  stat_summary(fun = "mean", geom = "line", size = 1, alpha = 0.8) +  
+  geom_abline(slope=1, linetype="dashed") +
+  coord_fixed(ratio=1) +  
+  scale_x_continuous(breaks=ticks) +  
+  scale_y_continuous(breaks=ticks) +  
+  ylab("Predicted Target Cell %") +
+  xlab("Actual Target Cell %") +
+  scale_color_npg(
+    breaks=c('paper1', 'paper2' ,'paper3'),
+    labels=c("Gut Cell Atlas", "GSE185224", "GSE201859")) +    
+  theme_minimal(base_size = 20, base_family = "Myriad Pro") +
+  theme(legend.position="bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Single Cell Reference") +
+  guides(color = guide_legend(title.position = "top"))+
+  facet_wrap(~imp, nrow=1) 
+
+music
+
+ggsave(music, dpi = 600, filename = "~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/gut_inter/gut-inter_music.png", width = 4, height=9, units = 'in', bg = 'white')
+
+```
+
+

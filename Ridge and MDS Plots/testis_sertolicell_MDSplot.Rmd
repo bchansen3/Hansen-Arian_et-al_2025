@@ -1,0 +1,138 @@
+---
+title: "Sertoli Cell MDS"
+author: "BH"
+date: "2025-05-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, DWLS, stringr, Metrics, ggrepel, magrittr,ggpubr, ggforce)
+
+theme_set(theme_few() + theme(text = element_text(size=28, family="Myriad Pro")))
+
+```
+
+
+Load in each methods combined psuedobulk (all magics, all alras, etc.). Then run dWLS deconv on those and remove the same-same comparisons. Only use the D7_same files
+
+Load the cell referneces
+```{r sigs}
+
+file_list <- list.files(path = "~/OneDrive - UW/data for deconv/Paper revision materials/DATA/cpm/Testis/cellrefs", pattern = "*.txt", full.names = TRUE)
+
+df_list <- list()
+
+
+for (file in file_list) {
+  df <- read.delim(file, header = FALSE)
+    rownames(df) <- df$V1
+  df <- df[, -1]
+  colnames(df) <- df[1,]
+  df <- df[, grepl("sertoli", names(df), ignore.case = TRUE)]
+  df <- df[-1,]
+  df_numeric <- as.data.frame(lapply(df, as.numeric))
+  row_means <- rowMeans(df_numeric, na.rm = TRUE)
+  sample_name <- tools::file_path_sans_ext(basename(file))
+  df_out <- data.frame(row_means)
+  colnames(df_out) <- sample_name
+  rownames(df_out) <- rownames(df)
+  df_list[[sample_name]] <- df_out
+}
+
+common_rownames <- Reduce(intersect, lapply(df_list, rownames))
+
+df_list_common <- lapply(df_list, function(df) {df[common_rownames, , drop = FALSE]})
+
+combined_table_srt <- do.call(cbind, df_list_common)%>%rename_with(~ paste0(., "_SRT"))%>%rownames_to_column("rowname")
+
+
+df_list <- list()
+
+for (file in file_list) {
+  df <- read.delim(file, header = FALSE)
+  rownames(df) <- df$V1
+  df <- df[, -1]
+  colnames(df) <- df[1,]
+  df <- df[, grepl("leydig|stroma", names(df), ignore.case = TRUE)]
+  df <- df[-1,]
+  df_numeric <- as.data.frame(lapply(df, as.numeric))
+  row_means <- rowMeans(df_numeric, na.rm = TRUE)
+  sample_name <- tools::file_path_sans_ext(basename(file))
+  df_out <- data.frame(row_means)
+  colnames(df_out) <- sample_name
+  rownames(df_out) <- rownames(df)
+  df_list[[sample_name]] <- df_out
+}
+
+common_rownames <- Reduce(intersect, lapply(df_list, rownames))
+
+df_list_common <- lapply(df_list, function(df) {df[common_rownames, , drop = FALSE]})
+
+combined_table_ley <- do.call(cbind, df_list_common) %>%rename_with(~ paste0(., "_LYG"))%>%rownames_to_column("rowname")
+
+
+both <- inner_join(combined_table_srt, combined_table_ley, by = "rowname")%>%column_to_rownames("rowname")
+
+
+
+```
+
+```{r list}
+
+mds <- both %>%
+  t() %>%
+  dist() %>%          
+  cmdscale() %>%
+  as_tibble()
+colnames(mds) <- c("Dimension 1", "Dimension 2")
+mds$ref <- colnames(both)
+
+mds <- mds %>%
+  mutate(
+    method = word(ref, -2, sep = "_"),
+    species = case_when(
+      str_starts(ref, "m") ~ "mouse",
+      str_starts(ref, "h") ~ "human"))%>%
+  mutate(title = case_when(
+    str_detect(ref, "h_a_112") ~ "Adult human",
+    str_detect(ref, "h_i_120") ~ "Infant human 120",
+    str_detect(ref, "h_i_124") ~ "Infant human 124",
+    str_detect(ref, "d7") ~ "PND7 Mouse",
+    str_detect(ref, "d2") ~ "PND2 Mouse"),
+    `cell type` = case_when(
+    str_detect(ref, "SRT") ~ "Sertoli",
+    str_detect(ref, "LYG") ~ "Leydig"),
+    group_id = paste(title, `cell type`, sep = "_"),
+    method = method %>%
+           str_replace_all("SVR", "SAVER") %>%
+           str_replace_all("noIMP", "No Imputation"))
+
+label_data <- mds %>%
+  group_by(title, `cell type`) %>%
+  slice(1) %>%  
+  ungroup()
+
+# Base scatter plot
+mds_test <- ggscatter(mds, x = "Dimension 1", y = "Dimension 2", 
+                      color = "cell type",
+                      palette = "d3",
+                      size = 3, 
+                      shape = 'method')+
+  ggforce::geom_mark_ellipse(aes(x = `Dimension 1`, y = `Dimension 2`, group = group_id, label = NULL), expand = unit(3, "mm"), linetype = "dashed", color = "black", alpha = 0.5,fill = NA) +
+  geom_text_repel(data = label_data, aes(label = title), size = 4, point.padding = .9, box.padding = 0.9, max.overlaps = Inf, force = 2, min.segment.length = 0, segment.color = 'black',family = "Myriad Pro") +
+  theme_few(15, base_family = "Myriad Pro") +
+  coord_cartesian(expand = TRUE)+
+  theme(legend.position = "right") 
+mds_test
+
+ggsave("~/OneDrive - UW/data for deconv/Paper revision materials/updated_figures/mds_testis_qLABELS.png",mds_test, width = 9, height = 5, units = "in")
+
+
+
+```

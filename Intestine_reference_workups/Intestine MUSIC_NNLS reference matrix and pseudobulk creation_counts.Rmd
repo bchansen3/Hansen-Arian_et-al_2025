@@ -1,0 +1,756 @@
+---
+title: "Reference matrix and pseudobulk creation"
+author: "Chris Arian"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tibble, tidyr, stringr,readxl, ggplot2,ggsci, ggthemes, NormExpression, SoupX, scuttle, Seurat, scran, SeuratDisk, devtools, harmony, biomaRt, BiocManager)
+
+
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+remotes::install_github("mojaveazure/seurat-disk")
+
+if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) BiocManager::install("org.Hs.eg.db")
+library(org.Hs.eg.db)
+
+```
+
+
+```{r functions}
+#a = object
+#b = downsample size
+#c = seed set
+samp <- function(a, b, c){
+  
+  ent <- subset(a, cell_type == "Enterocyte")
+  gob <- subset(a, cell_type == "Goblet cell")
+  other <- subset(a, cell_type == "Other")
+  prol <- subset(a, cell_type == "Proliferative cell")
+  best4 <- subset(a, cell_type == "BEST4")
+  tuft <- subset(a, cell_type == "Tuft cell")
+  eec <- subset(a, cell_type == "EEC")
+  pan <- subset(a, cell_type == "Paneth cell")
+  
+  set.seed(c)
+  dse <- if(table(Idents(ent)) > b){
+            ent[, sample(colnames(ent), size = b, replace = F)]
+  } else {
+      ent
+    }
+  set.seed(c)
+  dsg <- if(table(Idents(gob)) > b){
+            gob[, sample(colnames(gob), size = b, replace = F)]
+  } else {
+      gob
+    }
+  set.seed(c)
+  dso <- if(table(Idents(other)) > b){
+            other[, sample(colnames(other), size = b, replace = F)]
+  } else {
+      other
+    }
+  set.seed(c)
+  dsp <- if(table(Idents(prol)) > b){
+            prol[, sample(colnames(prol), size = b, replace = F)]
+  } else {
+      prol
+    }
+  set.seed(c)
+  dsb <- if(table(Idents(best4)) > b){
+            best4[, sample(colnames(best4), size = b, replace = F)]
+  } else {
+      best4
+    }
+  set.seed(c)
+  dst <- if(table(Idents(tuft)) > b){
+            tuft[, sample(colnames(tuft), size = b, replace = F)]
+  } else {
+      tuft
+    }
+  set.seed(c)
+  dsee <- if(table(Idents(eec)) > b){
+            eec[, sample(colnames(eec), size = b, replace = F)]
+  } else {
+      eec
+    }
+  set.seed(c)
+  dspan <- if(table(Idents(pan)) > b){
+            pan[, sample(colnames(pan), size = b, replace = F)]
+  } else {
+      pan
+    }
+  
+  merger <- merge(x = dse, y = list(dsg, dso, dsp, dsb, dst, dsee, dspan), merge.data = T)
+  return(merger)
+}
+
+samp2 <- function(a, b, c, d){
+  ct <- subset(a, idents = d)
+  set.seed(c)
+  subs <- ct[, sample(colnames(ct), size = b, replace = F)]
+  return(subs)
+}
+
+
+
+
+```
+
+
+```{r paper 1 no imputation pseudobulks}
+#load in data
+df <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper1/paper1_cpm.rds")
+
+
+table(Idents(df))
+
+#Need to make a "cell_type" column in metadata for below function to work
+df$cell_type <- df@active.ident
+
+#sample
+df_samp <- samp(df, 300, 23)
+table(df$annotation)
+
+#removing the sampled cells to make pseudobulk from the remainder
+cells_for_pseudo <- colnames(df)[!(colnames(df) %in% colnames(df_samp))]
+pseudo <- df[, cells_for_pseudo]
+
+#memory saver
+rm(df)
+gc()
+
+table(Idents(pseudo))
+"Proliferative cell         Enterocyte              BEST4        Paneth cell 
+              2953               9286                310               2316 "
+
+#We will be making 5 pseudobulks total with 2000 cells total - refer to code for ground truth values of cell type proportions
+#1
+ent <- data.frame(samp2(pseudo, 1000, 23, "Enterocyte")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 600, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 300, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 200, 23, "BEST4")@assays$RNA$counts)
+
+pb1 <- cbind(ent, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb1)[colnames(pb1) == "."] <- "avg"
+
+
+
+
+
+#2
+ent <- data.frame(samp2(pseudo, 200, 23, "Enterocyte")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 1300, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 300, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 200, 23, "BEST4")@assays$RNA$counts)
+
+pb2 <- cbind(ent, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb2)[colnames(pb2) == "."] <- "avg"
+
+
+
+
+#3
+ent <- data.frame(samp2(pseudo, 500, 23, "Enterocyte")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 1000, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 300, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 200, 23, "BEST4")@assays$RNA$counts)
+
+pb3 <- cbind(ent, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb3)[colnames(pb3) == "."] <- "avg"
+
+
+
+
+
+#4
+ent <- data.frame(samp2(pseudo, 1500, 23, "Enterocyte")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 300, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 100, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pb4 <- cbind(ent, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "GENEID")
+colnames(pb4)[colnames(pb4) == "."] <- "avg"
+
+
+
+
+
+#5
+ent <- data.frame(samp2(pseudo, 1800, 23, "Enterocyte")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 100, 23, "Paneth cell")@assays$RNA$counts)
+
+
+pb5 <- cbind(ent, prol, pan) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb5)[colnames(pb5) == "."] <- "avg"
+
+
+names(pb1)[names(pb1) == "avg"] <- "pseudo1"
+names(pb2)[names(pb2) == "avg"] <- "pseudo2"
+names(pb3)[names(pb3) == "avg"] <- "pseudo3"
+names(pb4)[names(pb4) == "avg"] <- "pseudo4"
+names(pb5)[names(pb5) == "avg"] <- "pseudo5"
+
+full_df <- pb1 %>%
+  inner_join(pb2, by = "GENEID") %>% 
+  inner_join(pb3, by = "GENEID") %>% 
+  inner_join(pb4, by = "GENEID") %>% 
+  inner_join(pb5, by = "GENEID")
+
+write.table(full_df, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/GUT/Pseudobulks/ALLpseudos_Paper1_NoImp_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = T)
+
+```
+
+```{r paper 1 no imputation cell ref CPM}
+
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.matrix(GetAssayData(object = df_samp, layer = "counts"))
+
+
+
+#b[c(1:10), c(1:10)]
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/Cell refs/Paper1_NoImp_CellRef_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+```
+
+
+
+
+Paper 2
+```{r paper 2 no imputation pseudobulks}
+#load in data
+df <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Proximal to distal survey/paper2_cpm.rds")
+
+
+#Need to make a "cell_type" column in metadata for below function to work
+df$cell_type <- df@active.ident
+
+#sample from data layer
+df_samp <- samp(df, 300, 23)
+table(Idents(df_samp))
+
+#removing the sampled cells to make pseudobulk from the remainder
+cells_for_pseudo <- colnames(df)[!(colnames(df) %in% colnames(df_samp))]
+pseudo <- df[, cells_for_pseudo]
+#memory saver
+rm(df)
+gc()
+
+table(Idents(pseudo))
+" Enterocyte              Other        Goblet cell          Tuft cell Proliferative cell 
+              9050               3998               2312                778                281 
+       Paneth cell              BEST4 
+               275                153 "
+
+
+#We will be making 5 pseudobulks total with 2000 cells total - refer to code for ground truth values of cell type proportions
+#1
+ent <- data.frame(samp2(pseudo, 1000, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 300, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 300, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 100, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pb1 <- cbind(ent, oth, gob, tuft, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "GENEID")
+colnames(pb1)[colnames(pb1) == "."] <- "avg"
+
+
+
+#2
+ent <- data.frame(samp2(pseudo, 200, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 300, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 1100, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 100, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pb2 <- cbind(ent, oth, gob, tuft, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "GENEID")
+colnames(pb2)[colnames(pb2) == "."] <- "avg"
+
+
+
+#3
+ent <- data.frame(samp2(pseudo, 500, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 300, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 800, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 100, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pb3 <- cbind(ent, oth, gob, tuft, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "GENEID")
+colnames(pb3)[colnames(pb3) == "."] <- "avg"
+
+
+
+#4
+ent <- data.frame(samp2(pseudo, 1500, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 100, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+pan <- data.frame(samp2(pseudo, 50, 23, "Paneth cell")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 50, 23, "BEST4")@assays$RNA$counts)
+
+pb4 <- cbind(ent, oth, gob, tuft, prol, pan, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb4)[colnames(pb4) == "."] <- "avg"
+
+
+
+
+
+#5
+ent <- data.frame(samp2(pseudo, 1800, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 100, 23, "Goblet cell")@assays$RNA$counts)
+
+pb5 <- cbind(ent, oth, gob) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pb5)[colnames(pb5) == "."] <- "avg"
+
+
+names(pb1)[names(pb1) == "avg"] <- "pseudo1"
+names(pb2)[names(pb2) == "avg"] <- "pseudo2"
+names(pb3)[names(pb3) == "avg"] <- "pseudo3"
+names(pb4)[names(pb4) == "avg"] <- "pseudo4"
+names(pb5)[names(pb5) == "avg"] <- "pseudo5"
+
+full_df <- pb1 %>%
+  inner_join(pb2, by = "GENEID") %>% 
+  inner_join(pb3, by = "GENEID") %>% 
+  inner_join(pb4, by = "GENEID") %>% 
+  inner_join(pb5, by = "GENEID")
+
+
+write.table(full_df, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/GUT/Pseudobulks/ALLpseudos_Paper2_NoImp_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = T)
+
+```
+
+```{r paper 2 no imputation ref matrix}
+
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.matrix(GetAssayData(object = df_samp, layer = "counts"))
+
+#b[c(1:10), c(1:10)]
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/Cell refs/Paper2_NoImp_CellRef_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+```
+
+
+
+paper 3
+```{r paper 3 pseudobulks no imputation}
+df <- readRDS("~/Dissertation project research/Experiment planning & results/Deconvolution/Paper 3/full_df3_withALRA.rds")
+
+
+#Need to make a "cell_type" column in metadata for below function to work
+df$cell_type <- df@active.ident
+
+#sample from data layer
+df_samp <- samp(df, 300, 23)
+table(Idents(df_samp))
+
+#removing the sampled cells to make pseudobulk from the remainder
+cells_for_pseudo <- colnames(df)[!(colnames(df) %in% colnames(df_samp))]
+pseudo <- df[, cells_for_pseudo]
+
+#memory saver
+rm(df)
+gc()
+
+table(Idents(pseudo))
+"Proliferative cell              Other                EEC          Tuft cell         Enterocyte 
+              5444                198                480                544               6110 
+       Goblet cell              BEST4 
+              3505                685"
+
+
+#We will be making 5 pseudobulks total with 2000 cells total - refer to code for ground truth values of cell type proportions
+#1
+ent <- data.frame(samp2(pseudo, 1000, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 300, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 300, 23, "Proliferative cell")@assays$RNA$counts)
+eec <- data.frame(samp2(pseudo, 100, 23, "EEC")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pseudobulk <- cbind(ent, oth, gob, tuft, prol, eec, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+#need to rename genes from ensembl to gene names
+ens <- pseudobulk$GENEID
+
+#Mapping geneid to ensembl
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = pseudobulk$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+pseudobulk <- pseudobulk %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+
+pseudobulk$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+pb1 <- pseudobulk %>%
+  relocate(SYMBOL) %>% 
+  dplyr::group_by(SYMBOL) %>%
+  summarise(pseudo1 = mean(avg)) %>% 
+  drop_na() %>% 
+  column_to_rownames(var = "SYMBOL") %>% 
+  round() %>% 
+  rownames_to_column(var = "GENEID") %>% 
+  data.frame()
+
+rm(pseudobulk)
+
+
+#2
+ent <- data.frame(samp2(pseudo, 200, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 1000, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 400, 23, "Proliferative cell")@assays$RNA$counts)
+eec <- data.frame(samp2(pseudo, 100, 23, "EEC")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pseudobulk <- cbind(ent, oth, gob, tuft, prol, eec, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+#need to rename genes from ensembl to gene names
+ens <- pseudobulk$GENEID
+
+#Mapping geneid to ensembl
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = pseudobulk$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+pseudobulk <- pseudobulk %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+
+pseudobulk$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+pb2 <- pseudobulk %>%
+  relocate(SYMBOL) %>% 
+  dplyr::group_by(SYMBOL) %>%
+  summarise(pseudo2 = mean(avg)) %>% 
+  drop_na() %>% 
+  column_to_rownames(var = "SYMBOL") %>% 
+  round() %>% 
+  rownames_to_column(var = "GENEID") %>% 
+  data.frame()
+
+rm(pseudobulk)
+
+
+
+
+#3
+ent <- data.frame(samp2(pseudo, 500, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 700, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 400, 23, "Proliferative cell")@assays$RNA$counts)
+eec <- data.frame(samp2(pseudo, 100, 23, "EEC")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 100, 23, "BEST4")@assays$RNA$counts)
+
+pseudobulk <- cbind(ent, oth, gob, tuft, prol, eec, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+#need to rename genes from ensembl to gene names
+ens <- pseudobulk$GENEID
+
+#Mapping geneid to ensembl
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = pseudobulk$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+pseudobulk <- pseudobulk %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+
+pseudobulk$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+pb3 <- pseudobulk %>%
+  relocate(SYMBOL) %>% 
+  dplyr::group_by(SYMBOL) %>%
+  summarise(pseudo3 = mean(avg)) %>% 
+  drop_na() %>% 
+  column_to_rownames(var = "SYMBOL") %>% 
+  round() %>% 
+  rownames_to_column(var = "GENEID") %>% 
+  data.frame()
+
+rm(pseudobulk)
+
+
+#4
+ent <- data.frame(samp2(pseudo, 1500, 23, "Enterocyte")@assays$RNA$counts)
+oth <- data.frame(samp2(pseudo, 100, 23, "Other")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 100, 23, "Goblet cell")@assays$RNA$counts)
+tuft <- data.frame(samp2(pseudo, 100, 23, "Tuft cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+eec <- data.frame(samp2(pseudo, 50, 23, "EEC")@assays$RNA$counts)
+b4 <- data.frame(samp2(pseudo, 50, 23, "BEST4")@assays$RNA$counts)
+
+pseudobulk <- cbind(ent, oth, gob, tuft, prol, eec, b4) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+#need to rename genes from ensembl to gene names
+ens <- pseudobulk$GENEID
+
+#Mapping geneid to ensembl
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = pseudobulk$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+pseudobulk <- pseudobulk %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+
+pseudobulk$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+pb4 <- pseudobulk %>%
+  relocate(SYMBOL) %>% 
+  dplyr::group_by(SYMBOL) %>%
+  summarise(pseudo4 = mean(avg)) %>% 
+  drop_na() %>% 
+  column_to_rownames(var = "SYMBOL") %>% 
+  round() %>% 
+  rownames_to_column(var = "GENEID") %>% 
+  data.frame()
+
+rm(pseudobulk)
+
+
+#5
+ent <- data.frame(samp2(pseudo, 1800, 23, "Enterocyte")@assays$RNA$counts)
+gob <- data.frame(samp2(pseudo, 100, 23, "Goblet cell")@assays$RNA$counts)
+prol <- data.frame(samp2(pseudo, 100, 23, "Proliferative cell")@assays$RNA$counts)
+
+pseudobulk <- cbind(ent, gob, prol) %>%
+  rowSums() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "GENEID")
+colnames(pseudobulk)[colnames(pseudobulk) == "."] <- "avg"
+
+
+#need to rename genes from ensembl to gene names
+ens <- pseudobulk$GENEID
+
+#Mapping geneid to ensembl
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = pseudobulk$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+pseudobulk <- pseudobulk %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+
+pseudobulk$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+pb5 <- pseudobulk %>%
+  relocate(SYMBOL) %>% 
+  dplyr::group_by(SYMBOL) %>%
+  summarise(pseudo5 = mean(avg)) %>% 
+  drop_na() %>% 
+  column_to_rownames(var = "SYMBOL") %>% 
+  round() %>% 
+  rownames_to_column(var = "GENEID") %>% 
+  data.frame()
+
+rm(pseudobulk)
+
+
+full_df <- pb1 %>%
+  inner_join(pb2, by = "GENEID") %>% 
+  inner_join(pb3, by = "GENEID") %>% 
+  inner_join(pb4, by = "GENEID") %>% 
+  inner_join(pb5, by = "GENEID")
+
+write.table(full_df, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/GUT/Pseudobulks/ALLpseudos_Paper3_NoImp_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = T)
+
+```
+
+
+```{r paper 3 no imputation ref matrix}
+
+a <- tibble(cellID = colnames(df_samp), clusterID = Idents(df_samp))
+b <- data.frame(GetAssayData(object = df_samp, layer = "counts"))
+
+
+#need to rename genes from ensembl to gene names
+ens <- rownames(b)
+b$GENEID <- rownames(b)
+
+ensembl_map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = b$GENEID,
+  columns = c("SYMBOL"),
+  keytype = "ENSEMBL"
+)
+
+#Adding it to the counts data
+b <- b %>%
+  left_join(ensembl_map, by = c("GENEID" = "ENSEMBL"))
+
+b$GENEID <- NULL
+
+#removing any NAs, averaging duplicated genes
+
+b1 <- b %>%
+      na.omit() %>%
+      group_by(SYMBOL) %>% 
+      summarise(across(where(is.numeric), mean)) %>% 
+      data.frame()
+
+b <- data.frame(b1)
+
+rownames(b) <- b$SYMBOL
+b$SYMBOL <- NULL
+b <- round(b)
+
+#b[c(1:10), c(1:10)]
+t_a <- data.frame(t(a))
+colnames(t_a) <- t_a[1,]
+
+colnames(b) <-gsub(".", "-", colnames(b), fixed = TRUE)
+cell_ref <- rbind(t_a, b)
+table(colnames(cell_ref) == cell_ref["cellID",])
+
+cell_ref$GENEID <- rownames(cell_ref)
+cell_ref <- cell_ref %>%
+  relocate(GENEID)
+
+#Getting rid of the cellID row so the cluster ID is now at the top
+cell_ref <- cell_ref[-1,]
+
+write.table(cell_ref, 
+            file = "C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/DATA/raw_counts/Cell refs/Paper3_NoImp_CellRef_counts.txt", 
+            sep = "\t", quote=FALSE, row.names = FALSE, col.names = F)
+
+
+```
+
+
+
+

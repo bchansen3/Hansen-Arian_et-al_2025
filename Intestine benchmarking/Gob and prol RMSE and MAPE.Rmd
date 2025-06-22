@@ -1,0 +1,241 @@
+---
+title: "Same batch figures"
+author: "Chris Arian"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, readxl, ggplot2, ggsci, ggthemes, vroom, readr, tidyverse, Metrics)
+
+```
+
+
+```{r add known values to table}
+gut_results <- readRDS("C:/Users/14404/UW/BRAD HANSEN - data for deconv/Paper revision materials/brad_updated_code/gut_results.rds")
+
+sames <- read.csv(file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Plot generation/gut_sames2.csv")
+
+
+sames$pb_gobs <- with(sames, ifelse(pb_paper == "paper1", 0,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.5 & imp %in% "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.1 & imp == "NoImputation", 0.55,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.25 & imp == "NoImputation", 0.4,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.9 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.5 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.1 & imp == "NoImputation", 0.5,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.25 & imp == "NoImputation", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.9 & imp == "NoImputation", 0.125,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.5 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.1 & imp == "MAGIC", 0.55,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.25 & imp == "MAGIC", 0.4,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.75 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.9 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.5 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.1 & imp == "MAGIC", 0.5,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.25 & imp == "MAGIC", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.75 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.9 & imp == "MAGIC", 0.125, NA))))))))))))))))))))))
+
+
+sames$pb_prol <- with(sames, ifelse(pb_paper == "paper2", 0,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.5 & imp %in% "NoImputation", 0.3,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.1 & imp == "NoImputation", 0.65,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.25 & imp == "NoImputation", 0.5,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.75 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.9 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.5 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.1 & imp == "NoImputation", 0.2,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.25 & imp == "NoImputation", 0.2,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.9 & imp == "NoImputation", 0.125,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.5 & imp == "MAGIC", 0.3,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.1 & imp == "MAGIC", 0.7,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.25 & imp == "MAGIC", 0.55,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.75 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.9 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.5 & imp == "MAGIC", 0.25,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.1 & imp == "MAGIC", 0.45,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.25 & imp == "MAGIC", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.75 & imp == "MAGIC", 0.125,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.9 & imp == "MAGIC", 0.05, NA))))))))))))))))))))))
+
+
+
+inters <- read.csv(file = "~/Dissertation project research/Experiment planning & results/Deconvolution/Plot generation/gut_inters2.csv")
+
+inters$pb_gobs <- with(inters, ifelse(pb_paper == "paper1", 0,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.5 & imp %in% "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.1 & imp == "NoImputation", 0.55,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.25 & imp == "NoImputation", 0.4,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper2" & pseudo == 0.9 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.5 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.1 & imp == "NoImputation", 0.5,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.25 & imp == "NoImputation", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.9 & imp == "NoImputation", 0.125,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.5 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.1 & imp == "MAGIC", 0.55,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.25 & imp == "MAGIC", 0.4,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.75 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper2" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper2" & pseudo == 0.9 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.5 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.1 & imp == "MAGIC", 0.5,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.25 & imp == "MAGIC", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.75 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.9 & imp == "MAGIC", 0.125, NA))))))))))))))))))))))
+
+
+inters$pb_prol <- with(inters, ifelse(pb_paper == "paper2", 0,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.5 & imp %in% "NoImputation", 0.3,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.1 & imp == "NoImputation", 0.65,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.25 & imp == "NoImputation", 0.5,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.75 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper1" & pseudo == 0.9 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.5 & imp == "NoImputation", 0.15,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.1 & imp == "NoImputation", 0.2,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.25 & imp == "NoImputation", 0.2,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.75 & imp == "NoImputation", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "ALRA" | pb_paper == "paper3" & pseudo == 0.9 & imp == "NoImputation", 0.125,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.5 & imp == "MAGIC", 0.3,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.1 & imp == "MAGIC", 0.7,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.25 & imp == "MAGIC", 0.55,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.75 & imp == "MAGIC", 0.15,
+                             ifelse(pb_paper == "paper1" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper1" & pseudo == 0.9 & imp == "MAGIC", 0.05,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.5 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.5 & imp == "MAGIC", 0.25,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.1 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.1 & imp == "MAGIC", 0.45,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.25 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.25 & imp == "MAGIC", 0.35,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.75 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.75 & imp == "MAGIC", 0.125,
+                             ifelse(pb_paper == "paper3" & pseudo == 0.9 & imp == "SAVER" | pb_paper == "paper3" & pseudo == 0.9 & imp == "MAGIC", 0.05, NA))))))))))))))))))))))
+
+```
+
+
+
+
+
+
+```{r inter dataset prep}
+
+
+inters$sigref <- sub("paper1", "Gut Atlas", inters$sigref)
+inters$sigref <- sub("paper2", "GSE185", inters$sigref)
+inters$sigref <- sub("paper3", "GSE201", inters$sigref)
+
+
+inters$methods <- paste(inters$method, inters$imp, sep = "_")
+inters$method <- NULL
+inters$imp <- NULL
+inters$methods <- as.factor(inters$methods)
+
+inters$pb_sig <- paste(inters$pb_paper, inters$sigref, sep = "_")
+inters$pb_paper <- NULL
+inters$sigref <- NULL
+inters$pb_sig <- as.factor(inters$pb_sig)
+
+
+```
+
+```{r gob interdataset mapes and RMSEs}
+
+#MAPES
+method_levels <- levels(inters$methods)
+pb_levels <- levels(inters$pb_sig) 
+
+gob_mapes <- data.frame(matrix(nrow = length(pb_levels), ncol = length(method_levels)))
+colnames(gob_mapes) <- method_levels
+rownames(gob_mapes) <- pb_levels
+
+for(m in method_levels) {
+  for(p in pb_levels) {
+    subset_data <- inters[inters$methods == m & inters$pb_sig == p, ]
+    mapes <- (mape(subset_data$pb_gob, subset_data$Goblet))*100
+    gob_mapes[p, m] <- mapes
+  }
+}
+
+
+gob_mapest <- data.frame(t(gob_mapes))
+gob_mapest[, c(1,2)] <- NULL #Need to remove these columns because Gut Cell Atlas does not have Goblet cells in the pseudobulks
+gob_mapest$avg <- rowMeans(gob_mapest, na.rm = TRUE)
+gob_mapest$max <- apply(gob_mapest, 1, max, na.rm = T)
+gob_mapest$min <- apply(gob_mapest, 1, min, na.rm = T)
+
+
+
+#RMSEs
+
+gob_rmses <- data.frame(matrix(nrow = length(pb_levels), ncol = length(method_levels)))
+colnames(gob_rmses) <- method_levels
+rownames(gob_rmses) <- pb_levels
+
+for(m in method_levels) {
+  for(p in pb_levels) {
+    subset_data <- inters[inters$methods == m & inters$pb_sig == p, ]
+    rmses <- rmse(subset_data$pb_gob, subset_data$Goblet)
+    gob_rmses[p, m] <- rmses
+  }
+}
+
+gob_rmsest <- data.frame(t(gob_rmses))
+gob_rmsest[, c(1,2)] <- NULL #Need to remove these columns because Gut Cell Atlas does not have Goblet cells in the pseudobulks
+gob_rmsest$avg <- rowMeans(gob_rmsest, na.rm = TRUE)
+gob_rmsest$max <- apply(gob_rmsest, 1, max, na.rm = T)
+gob_rmsest$min <- apply(gob_rmsest, 1, min, na.rm = T)
+
+```
+
+
+
+```{r prol interdataset mapes}
+
+
+#MAPES
+prol_mapes <- data.frame(matrix(nrow = length(pb_levels), ncol = length(method_levels)))
+colnames(prol_mapes) <- method_levels
+rownames(prol_mapes) <- pb_levels
+
+for(m in method_levels) {
+  for(p in pb_levels) {
+    subset_data <- inters[inters$methods == m & inters$pb_sig == p, ]
+    mapes <- (mape(subset_data$pb_prol, subset_data$Proliferative))*100
+    prol_mapes[p, m] <- mapes
+  }
+}
+
+prol_mapest <- data.frame(t(prol_mapes))
+prol_mapest[, c(3,4)] <- NULL #Need to remove these columns because GSE185 does not have Proliferating cells in the pseudobulks
+prol_mapest$avg <- rowMeans(prol_mapest, na.rm = TRUE)
+prol_mapest$max <- apply(prol_mapest, 1, max, na.rm = T)
+prol_mapest$min <- apply(prol_mapest, 1, min, na.rm = T)
+
+#RMSEs
+prol_rmses <- data.frame(matrix(nrow = length(pb_levels), ncol = length(method_levels)))
+colnames(prol_rmses) <- method_levels
+rownames(prol_rmses) <- pb_levels
+
+for(m in method_levels) {
+  for(p in pb_levels) {
+    subset_data <- inters[inters$methods == m & inters$pb_sig == p, ]
+    rmses <- rmse(subset_data$pb_prol, subset_data$Proliferative)
+    prol_rmses[p, m] <- rmses
+  }
+}
+
+prol_rmsest <- data.frame(t(prol_rmses))
+prol_rmsest[, c(3,4)] <- NULL #Need to remove these columns because GSE185 does not have Proliferating cells in the pseudobulks
+prol_rmsest$avg <- rowMeans(prol_rmsest, na.rm = TRUE)
+prol_rmsest$max <- apply(prol_rmsest, 1, max, na.rm = T)
+prol_rmsest$min <- apply(prol_rmsest, 1, min, na.rm = T)
+
+```
+
